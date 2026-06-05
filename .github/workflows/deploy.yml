@@ -1,0 +1,60 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main, develop, publish]
+  workflow_dispatch:
+
+env:
+  REGISTRY: hkccr.ccs.tencentyun.com
+  IMAGE: hkccr.ccs.tencentyun.com/plugins/campus
+
+jobs:
+  build-and-push:
+    name: Build & Push Docker Image
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Login to Tencent registry
+        shell: bash
+        env:
+          TENCENT_REGISTRY_USER: ${{ secrets.TENCENT_REGISTRY_USER }}
+          TENCENT_REGISTRY_PASSWORD: ${{ secrets.TENCENT_REGISTRY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          for attempt in 1 2 3 4 5; do
+            if printf '%s' "${TENCENT_REGISTRY_PASSWORD}" | docker login "${REGISTRY}" \
+              --username "${TENCENT_REGISTRY_USER}" \
+              --password-stdin; then
+              exit 0
+            fi
+            sleep_seconds=$((attempt * 10))
+            echo "Registry login failed on attempt ${attempt}; retrying in ${sleep_seconds}s..."
+            docker logout "${REGISTRY}" || true
+            sleep "${sleep_seconds}"
+          done
+          echo "Registry login failed after 5 attempts."
+          exit 1
+
+      - uses: docker/metadata-action@v5
+        id: meta
+        with:
+          images: ${{ env.IMAGE }}
+          tags: |
+            type=raw,value=main,enable=${{ github.ref == 'refs/heads/main' }}
+            type=raw,value=develop,enable=${{ github.ref == 'refs/heads/develop' }}
+            type=raw,value=publish,enable=${{ github.ref == 'refs/heads/publish' }}
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/publish' }}
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}

@@ -1,0 +1,21 @@
+{
+  "// 说明": "此文件为插件注册配置示例，将内容添加到主系统的 plugins.json 中",
+  "id": "campus",
+  "name": "校园管理",
+  "nameI18n": {
+    "zh-CN": "校园管理",
+    "zh-TW": "校園管理",
+    "en-US": "Campus Management",
+    "ja-JP": "キャンパス管理",
+    "th-TH": "การจัดการโรงเรียน"
+  },
+  "description": "整合学校、班级、学生账号和教学工具入口",
+  "url": "http://localhost:3006/",
+  "allowedOrigin": "http://localhost:3006",
+  "icon": "School",
+  "group": "education",
+  "enabled": true,
+  "order": 1,
+  "accessScope": "auth-only",
+  "version": "1.0.0"
+}

@@ -1,0 +1,28 @@
+{
+  "id": "campus",
+  "schemaVersion": "1",
+  "nameI18n": {
+    "zh-CN": "校园管理",
+    "zh-TW": "校園管理",
+    "en-US": "Campus Management",
+    "ja-JP": "キャンパス管理",
+    "th-TH": "การจัดการโรงเรียน"
+  },
+  "descriptionI18n": {
+    "zh-CN": "整合学校、班级、学生账号和教学工具入口",
+    "zh-TW": "整合學校、班級、學生帳號和教學工具入口",
+    "en-US": "Unified entry for schools, classes, student accounts, and teaching tools",
+    "ja-JP": "学校、クラス、学生アカウント、教材ツールを統合する入口",
+    "th-TH": "ศูนย์รวมโรงเรียน ชั้นเรียน บัญชีนักเรียน และเครื่องมือสอน"
+  },
+  "group": {
+    "id": "education",
+    "nameI18n": {
+      "zh-CN": "教学管理",
+      "zh-TW": "教學管理",
+      "en-US": "Education",
+      "ja-JP": "教育管理",
+      "th-TH": "การศึกษา"
+    }
+  }
+}
