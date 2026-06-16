@@ -62,7 +62,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { ElMessage } from 'element-plus'
-import { listGroups, listOrganizations, listUsers } from '../api'
+import { listCampusManagedUsers, listGroups, listOrganizations, listUsers } from '../api'
 import { useAuthSession } from '../composables/useAuthSession'
 import { usePermissions } from '../composables/usePermissions'
 import { normalizeList, normalizeTotal } from '../utils/apiData'
@@ -83,7 +83,7 @@ const roleHint = computed(() => {
     case 'manager':
       return '老师视角，可处理班级、小组、学生查看和教学工具入口。'
     case 'user':
-      return '学生视角，可查看自己的校园入口并进入教学工具。'
+      return '学生账号不使用校园管理插件，请从课程工具入口进入学习内容。'
     default:
       return '请使用平台账号进入校园管理插件。'
   }
@@ -93,12 +93,6 @@ const metrics = computed(() => [
   ...(can('view-schools') ? [{ label: '学校', value: schoolCount.value, note: 'Organization' }] : []),
   ...(can('view-classes') ? [{ label: '班级/小组', value: groupCount.value, note: 'Group' }] : []),
   ...(can('view-students') ? [{ label: '账号', value: userCount.value, note: 'User' }] : []),
-  ...(primaryRole.value === 'user'
-    ? [
-        { label: '当前身份', value: '学生', note: 'User' },
-        { label: '所属学校', value: String(user.value?.organizations?.length ?? 0), note: 'Organization' },
-      ]
-    : []),
   { label: '工具入口', value: '已有插件', note: 'Plugin' },
 ])
 
@@ -107,7 +101,7 @@ const workflowSteps = computed(() => {
     return [
       { index: '1', title: '初始化学校', description: '维护学校边界和平台级入口。', to: '/schools' },
       { index: '2', title: '整理班级', description: '复用 Group 管理班级或项目组。', to: '/classes' },
-      { index: '3', title: '管理账号', description: '进入学生账号和批量开通入口。', to: '/students' },
+      { index: '3', title: '管理账号', description: '维护组织账号、资源和场景归属。', to: '/students' },
       { index: '4', title: '配置工具', description: '进入 system-admin 维护插件注册。', to: '/tools' },
     ]
   }
@@ -116,7 +110,7 @@ const workflowSteps = computed(() => {
     return [
       { index: '1', title: '维护学校', description: '管理本校账号和工具开放边界。', to: '/schools' },
       { index: '2', title: '管理班级', description: '按课程、年级或项目组织学生。', to: '/classes' },
-      { index: '3', title: '开通学生', description: '批量创建账号或生成邀请链接。', to: '/students' },
+      { index: '3', title: '维护账号', description: '管理本校老师和学生账号内容。', to: '/students' },
       { index: '4', title: '查看工具', description: '整理本校常用教学入口。', to: '/tools' },
     ]
   }
@@ -129,16 +123,13 @@ const workflowSteps = computed(() => {
     ]
   }
 
-  return [
-    { index: '1', title: '查看入口', description: '确认当前校园身份和所属学校。', to: '/dashboard' },
-    { index: '2', title: '进入工具', description: '打开课程中使用的教学工具。', to: '/tools' },
-  ]
+  return []
 })
 
 const mappings = [
   { platform: 'Organization', campus: '学校', note: '控制账号、插件和菜单开放范围' },
   { platform: 'Group', campus: '班级/小组', note: '复用现有小组协作能力' },
-  { platform: 'User', campus: '学生/老师', note: '学生为 user，老师为 admin，运维为 root' },
+  { platform: 'User', campus: '学生/老师', note: '学生 user 不进入本插件，老师为 manager，学校管理为 admin，管理员为 root' },
   { platform: 'Plugin', campus: '教学工具', note: '由 system-admin 维护注册、启停和入口' },
 ]
 
@@ -147,7 +138,9 @@ async function loadSummary() {
     const [organizationsRes, groupsRes, usersRes] = await Promise.allSettled([
       can('view-schools') ? listOrganizations() : Promise.resolve(null),
       can('view-classes') ? listGroups({ 'per-page': 1 }) : Promise.resolve(null),
-      can('view-students') ? listUsers({ page: 1, pageSize: 1 }) : Promise.resolve(null),
+      can('view-students')
+        ? (can('manage-student-accounts') ? listCampusManagedUsers({ page: 1, pageSize: 1 }) : listUsers({ page: 1, pageSize: 1 }))
+        : Promise.resolve(null),
     ])
 
     if (organizationsRes.status === 'fulfilled' && organizationsRes.value) {

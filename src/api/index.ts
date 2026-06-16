@@ -15,6 +15,11 @@ const userApi = axios.create({
   timeout: 10000,
 })
 
+const campusApi = axios.create({
+  baseURL: '/api/v1/plugin-campus',
+  timeout: 60000,
+})
+
 const mainApi = axios.create({
   baseURL: '/api/v1',
   timeout: 10000,
@@ -144,10 +149,11 @@ function setupInterceptors(instance: ReturnType<typeof axios.create>) {
 }
 
 setupInterceptors(userApi)
+setupInterceptors(campusApi)
 setupInterceptors(mainApi)
 
 export default mainApi
-export { mainApi, userApi }
+export { campusApi, mainApi, userApi }
 
 export interface OrganizationSummary {
   id: number
@@ -190,6 +196,53 @@ export interface UserItem {
   roles?: string[]
   organizations?: OrganizationSummary[]
   created_at?: number
+}
+
+export interface CampusContentCounts {
+  verse_count: number
+  resource_count: number
+  meta_count?: number
+}
+
+export interface CampusManagedUser extends UserItem {
+  primary_role?: string
+  content_counts?: CampusContentCounts
+}
+
+export interface CampusOperationResult {
+  user_id: number
+  username: string
+  success: boolean
+  message: string
+  error?: string
+  errors?: string[]
+  cleared?: CampusContentCounts
+  verse_id?: number | null
+  file_id?: number | null
+  resource_id?: number | null
+  resource_name?: string
+  resource_type?: string
+}
+
+export interface CampusOperationResponse {
+  code: number
+  message?: string
+  data: {
+    success_count: number
+    failed_count: number
+    results: CampusOperationResult[]
+  }
+}
+
+export interface CampusClearPreview {
+  user_count: number
+  verse_count: number
+  resource_count: number
+  meta_count?: number
+  targets: Array<{
+    user_id: number
+    username: string
+  } & CampusContentCounts>
 }
 
 export interface GroupItem {
@@ -243,6 +296,83 @@ export function updateGroup(id: number, payload: Pick<GroupItem, 'name' | 'descr
 
 export function listUsers(params?: Record<string, unknown>) {
   return userApi.get<PaginatedResponse<UserItem>>('/users', { params })
+}
+
+export function listCampusManagedUsers(params?: Record<string, unknown>) {
+  return campusApi.get<PaginatedResponse<CampusManagedUser>>('/users', { params })
+}
+
+export function updateCampusUserPassword(payload: {
+  organization_id: number
+  user_ids?: number[]
+  password: string
+}) {
+  return campusApi.post<CampusOperationResponse>('/users/password', payload)
+}
+
+export function previewCampusClearContent(payload: {
+  organization_id: number
+  user_ids?: number[]
+}) {
+  return campusApi.post<{ code: number; message?: string; data: CampusClearPreview }>(
+    '/users/clear-content-preview',
+    payload,
+  )
+}
+
+export function clearCampusContent(payload: {
+  organization_id: number
+  user_ids?: number[]
+  confirm: true
+}) {
+  return campusApi.post<CampusOperationResponse>('/users/clear-content', payload)
+}
+
+export function importCampusSceneZip(payload: {
+  organization_id: number
+  user_ids?: number[]
+  file: File
+}) {
+  const formData = new FormData()
+  formData.append('organization_id', String(payload.organization_id))
+  formData.append('file', payload.file)
+  if (payload.user_ids?.length) {
+    formData.append('user_ids', JSON.stringify(payload.user_ids))
+  }
+
+  return campusApi.post<CampusOperationResponse>('/users/import-scene-zip', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  })
+}
+
+export function uploadCampusResource(payload: {
+  organization_id: number
+  user_ids?: number[]
+  file: File
+  name?: string
+  type?: string
+  info?: string
+}) {
+  const formData = new FormData()
+  formData.append('organization_id', String(payload.organization_id))
+  formData.append('file', payload.file)
+  formData.append('filename', payload.file.name)
+  if (payload.user_ids?.length) {
+    formData.append('user_ids', JSON.stringify(payload.user_ids))
+  }
+  if (payload.name?.trim()) {
+    formData.append('name', payload.name.trim())
+  }
+  if (payload.type) {
+    formData.append('type', payload.type)
+  }
+  if (payload.info?.trim()) {
+    formData.append('info', payload.info.trim())
+  }
+
+  return campusApi.post<CampusOperationResponse>('/users/upload-resource', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  })
 }
 
 export function listInvitations(params?: Record<string, unknown>) {

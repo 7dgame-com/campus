@@ -37,6 +37,6 @@ export default {
     goToDiagnostics: 'ไปที่หน้าตรวจ API',
   },
   permission: {
-    noPermission: 'การจัดการโรงเรียนต้องใช้บทบาท root, admin, manager หรือ user',
+    noPermission: 'การจัดการโรงเรียนต้องใช้บทบาท root, admin หรือ manager',
   },
 }

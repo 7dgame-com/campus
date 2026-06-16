@@ -37,6 +37,6 @@ export default {
     goToDiagnostics: 'API診断へ',
   },
   permission: {
-    noPermission: 'キャンパス管理には root、admin、manager、user のいずれかのロールが必要です',
+    noPermission: 'キャンパス管理には root、admin、manager のいずれかのロールが必要です',
   },
 }

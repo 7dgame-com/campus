@@ -55,15 +55,15 @@ const { can } = usePermissions()
 const teachingTools = [
   {
     id: 'user-management',
-    name: '用户管理',
-    description: '维护学生账号、老师角色、学校边界和邀请注册链接。',
+    name: '平台用户管理',
+    description: '维护平台账号、角色、学校边界和邀请注册链接。',
     scope: '账号与学校边界',
-    visibility: '学校管理 / 管理员',
+    visibility: '管理员',
     status: '已有插件',
     statusType: 'success' as const,
     path: '/plugins/user-management',
     icon: markRaw(User),
-    permission: 'manage-student-accounts',
+    permission: 'manage-global-tools',
   },
   {
     id: 'blockly',
@@ -120,7 +120,7 @@ const visibleTeachingTools = computed(() => teachingTools.filter((tool) => can(t
 const reviewItems = [
   { item: '管理对象清晰', description: '学校、班级、学生、老师均映射到现有 Organization / Group / User。', owner: '校园插件' },
   { item: '权限边界合理', description: 'root 为管理员，admin 为学校管理，manager 为老师，user 为学生，各身份看到不同界面。', owner: '校园插件 + 主后端' },
-  { item: '批量开通可用', description: '学生批量创建和邀请链接复用 user-management 的现有接口与页面。', owner: '用户管理插件' },
+  { item: '账号操作受控', description: '学校管理只在校园插件内改密码、清空内容、导入场景，不提供增删账号入口。', owner: '校园插件 + 主后端' },
   { item: '工具开放可控', description: '工具入口按插件注册配置和 accessScope 控制，不在校园插件新增独立权限源。', owner: 'system-admin' },
   { item: '后续扩展平滑', description: '新增数字课程插件后，只需注册为平台插件，再在校园工具页增加入口。', owner: '插件体系' },
 ]

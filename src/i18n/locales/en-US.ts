@@ -37,6 +37,6 @@ export default {
     goToDiagnostics: 'Go to API diagnostics',
   },
   permission: {
-    noPermission: 'Campus management requires a root, admin, manager, or user role',
+    noPermission: 'Campus management requires a root, admin, or manager role',
   },
 }

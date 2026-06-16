@@ -84,7 +84,7 @@ describe('usePermissions', () => {
     expect(permissions.can('manage-student-accounts')).toBe(false)
   })
 
-  it('keeps student sessions on overview and teaching tools only', async () => {
+  it('denies student-only sessions from the campus plugin', async () => {
     sessionState.loaded.value = true
     sessionState.user.value = { roles: ['user'] }
     sessionState.isAuthenticated.value = true
@@ -95,9 +95,10 @@ describe('usePermissions', () => {
     await permissions.fetchPermissions()
 
     expect(permissions.primaryRole.value).toBe('user')
-    expect(permissions.hasAny()).toBe(true)
-    expect(permissions.can('view-dashboard')).toBe(true)
-    expect(permissions.can('view-tools')).toBe(true)
+    expect(permissions.hasCampusAccess.value).toBe(false)
+    expect(permissions.hasAny()).toBe(false)
+    expect(permissions.can('view-dashboard')).toBe(false)
+    expect(permissions.can('view-tools')).toBe(false)
     expect(permissions.can('view-students')).toBe(false)
     expect(permissions.can('manage-global-tools')).toBe(false)
   })
@@ -113,6 +114,20 @@ describe('usePermissions', () => {
     await permissions.fetchPermissions()
 
     expect(permissions.primaryRole.value).toBe('guest')
+    expect(permissions.hasAny()).toBe(false)
+  })
+
+  it('does not grant permissions before the session is verified', async () => {
+    sessionState.loaded.value = false
+    sessionState.user.value = { roles: ['root'] }
+    sessionState.isAuthenticated.value = true
+
+    const { usePermissions } = await loadComposable()
+    const permissions = usePermissions()
+
+    expect(permissions.primaryRole.value).toBe('root')
+    expect(permissions.hasCampusAccess.value).toBe(false)
+    expect(permissions.can('manage-global-tools')).toBe(false)
     expect(permissions.hasAny()).toBe(false)
   })
 })
