@@ -37,6 +37,6 @@ export default {
     goToDiagnostics: '前往 API 诊断页面 →',
   },
   permission: {
-    noPermission: '您没有校园管理权限，请联系管理员配置 root、admin、manager 或 user 角色',
+    noPermission: '您没有校园管理权限，请联系管理员配置 root、admin 或 manager 角色',
   },
 }

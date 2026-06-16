@@ -39,9 +39,10 @@ export function usePermissions() {
   const isAdmin = computed(() => roles.value.includes('admin'))
   const isManager = computed(() => roles.value.includes('manager'))
   const isStudent = computed(() => roles.value.includes('user') && !isRoot.value && !isAdmin.value && !isManager.value)
-  const hasSchoolManagement = computed(() => isRoot.value || isAdmin.value)
-  const hasTeachingManagement = computed(() => hasSchoolManagement.value || isManager.value)
-  const hasCampusAccess = computed(() => loaded.value && isAuthenticated.value && primaryRole.value !== 'guest')
+  const hasVerifiedSession = computed(() => loaded.value && isAuthenticated.value)
+  const hasSchoolManagement = computed(() => hasVerifiedSession.value && (isRoot.value || isAdmin.value))
+  const hasTeachingManagement = computed(() => hasVerifiedSession.value && (isRoot.value || isAdmin.value || isManager.value))
+  const hasCampusAccess = computed(() => hasTeachingManagement.value)
 
   const permissions = computed<Permissions>(() => ({
     'view-dashboard': hasCampusAccess.value,
@@ -52,7 +53,7 @@ export function usePermissions() {
     'manage-school-boundaries': hasSchoolManagement.value,
     'manage-classes': hasTeachingManagement.value,
     'manage-student-accounts': hasSchoolManagement.value,
-    'manage-global-tools': isRoot.value,
+    'manage-global-tools': hasVerifiedSession.value && isRoot.value,
   }))
 
   async function fetchPermissions(force = false) {
