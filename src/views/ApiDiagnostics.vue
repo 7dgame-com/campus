@@ -60,7 +60,7 @@ const checks = reactive<DiagnosticCheck[]>([
   },
   {
     name: '学生账号',
-    url: '/api/v1/plugin-user/users',
+    url: '/api-auth/v1/plugin-user/users',
     status: 'pending',
     message: '-',
   },
