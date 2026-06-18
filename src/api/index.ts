@@ -15,6 +15,11 @@ const userApi = axios.create({
   timeout: 10000,
 })
 
+const identityPluginUserApi = axios.create({
+  baseURL: '/api-auth/v1/plugin-user',
+  timeout: 10000,
+})
+
 const campusApi = axios.create({
   baseURL: '/api/v1/plugin-campus',
   timeout: 60000,
@@ -149,11 +154,12 @@ function setupInterceptors(instance: ReturnType<typeof axios.create>) {
 }
 
 setupInterceptors(userApi)
+setupInterceptors(identityPluginUserApi)
 setupInterceptors(campusApi)
 setupInterceptors(mainApi)
 
 export default mainApi
-export { campusApi, mainApi, userApi }
+export { campusApi, identityPluginUserApi, mainApi, userApi }
 
 export interface OrganizationSummary {
   id: number
@@ -295,7 +301,7 @@ export function updateGroup(id: number, payload: Pick<GroupItem, 'name' | 'descr
 }
 
 export function listUsers(params?: Record<string, unknown>) {
-  return userApi.get<PaginatedResponse<UserItem>>('/users', { params })
+  return getPluginUserReadonly<PaginatedResponse<UserItem>>('/users', params)
 }
 
 export function listCampusManagedUsers(params?: Record<string, unknown>) {
@@ -376,5 +382,21 @@ export function uploadCampusResource(payload: {
 }
 
 export function listInvitations(params?: Record<string, unknown>) {
-  return userApi.get<PaginatedResponse<InvitationItem>>('/invitations', { params })
+  return getPluginUserReadonly<PaginatedResponse<InvitationItem>>('/invitations', params)
+}
+
+function getPluginUserReadonly<T>(path: string, params?: Record<string, unknown>) {
+  return identityPluginUserApi.get<T>(path, { params }).catch((err: AxiosError) => {
+    if (shouldFallbackToLegacyPluginUser(err)) {
+      return userApi.get<T>(path, { params })
+    }
+    return Promise.reject(err)
+  })
+}
+
+function shouldFallbackToLegacyPluginUser(err: AxiosError): boolean {
+  if (!err.response) {
+    return true
+  }
+  return [401, 404, 502, 503, 504].includes(err.response.status)
 }
