@@ -103,16 +103,21 @@ describe('api token bootstrap', () => {
       expect(config.url).toBe('/users/upload-resource')
       expect(config.method).toBe('post')
       expect(config.headers.Authorization).toBe('Bearer campus-token')
-      expect(config.data).toBeInstanceOf(FormData)
 
-      const formData = config.data as FormData
-      expect(formData.get('organization_id')).toBe('7')
-      expect(formData.get('user_ids')).toBe('[11,12]')
-      expect(formData.get('filename')).toBe('model.glb')
-      expect(formData.get('name')).toBe('Campus Model')
-      expect(formData.get('type')).toBe('polygen')
-      expect(formData.get('info')).toBe('for class')
-      expect(formData.get('file')).toBeInstanceOf(File)
+      const body = typeof config.data === 'string' ? JSON.parse(config.data) : config.data
+      expect(body).toEqual({
+        organization_id: 7,
+        user_ids: [11, 12],
+        filename: 'model.glb',
+        key: 'polygen/d41d8cd98f00b204e9800998ecf8427e.glb',
+        url: '/storage/store/polygen/d41d8cd98f00b204e9800998ecf8427e.glb',
+        md5: 'd41d8cd98f00b204e9800998ecf8427e',
+        size: 128,
+        mime_type: 'model/gltf-binary',
+        name: 'Campus Model',
+        type: 'polygen',
+        info: 'for class',
+      })
 
       return {
         status: 200,
@@ -124,11 +129,17 @@ describe('api token bootstrap', () => {
     }
 
     try {
-      const file = new File(['glb'], 'model.glb', { type: 'model/gltf-binary' })
       const response = await uploadCampusResource({
         organization_id: 7,
         user_ids: [11, 12],
-        file,
+        file: {
+          filename: 'model.glb',
+          key: 'polygen/d41d8cd98f00b204e9800998ecf8427e.glb',
+          url: '/storage/store/polygen/d41d8cd98f00b204e9800998ecf8427e.glb',
+          md5: 'd41d8cd98f00b204e9800998ecf8427e',
+          size: 128,
+          mime_type: 'model/gltf-binary',
+        },
         name: 'Campus Model',
         type: 'polygen',
         info: 'for class',

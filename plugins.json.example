@@ -1,5 +1,5 @@
 {
-  "// 说明": "此文件为插件注册配置示例，将内容添加到主系统的 plugins.json 中",
+  "// 说明": "此文件仅作为“插件注册管理”录入参考；不要添加到主系统本地 plugins.json。校园管理必须设置 organization_name，留空会变成公共插件。",
   "id": "campus",
   "name": "校园管理",
   "nameI18n": {
@@ -11,11 +11,14 @@
   },
   "description": "整合学校、班级、学生账号和教学工具入口",
   "url": "http://localhost:3006/",
-  "allowedOrigin": "http://localhost:3006",
+  "allowed_origin": "http://localhost:3006",
+  "allowed_host_origins": [
+    "http://localhost:3001"
+  ],
   "icon": "School",
-  "group": "education",
+  "organization_name": "<organization-name>",
   "enabled": true,
   "order": 1,
-  "accessScope": "auth-only",
+  "access_scope": "auth-only",
   "version": "1.0.0"
 }
