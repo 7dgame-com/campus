@@ -1,8 +1,8 @@
 export default {
   pluginMeta: {
     name: '校园管理',
-    description: '整合学校、班级、学生账号和教学工具入口',
-    groupName: '教学管理',
+    description: '整合当前组织内账号、资源、场景和教学工具入口',
+    groupName: '组织插件',
   },
   common: {
     loading: '加载中...',
@@ -13,7 +13,7 @@ export default {
   },
   nav: {
     dashboard: '总览',
-    schools: '学校',
+    schools: '组织',
     classes: '班级',
     students: '学生',
     tools: '教学工具',
@@ -22,7 +22,7 @@ export default {
   dashboard: {
     eyebrow: '校园场景方案',
     title: '校园管理工具',
-    description: '以现有基础插件能力为底座，将组织、用户、小组和插件授权转换为学校可理解、可审阅、可落地的管理路径。',
+    description: '以现有基础插件能力为底座，将组织、用户和插件授权转换为组织内可审阅、可落地的数据管理路径。',
     currentRole: '当前身份',
     workflowTitle: '典型使用流程',
     mappingTitle: '校园对象映射',
@@ -37,6 +37,9 @@ export default {
     goToDiagnostics: '前往 API 诊断页面 →',
   },
   permission: {
-    noPermission: '您没有校园管理权限，请联系管理员配置 root、admin 或 manager 角色',
+    noPermission: '您没有当前组织的校园管理权限。root 可管理全部组织，admin 或 manager 需属于当前组织。',
+    organizationRequiredTitle: '需要组织上下文',
+    organizationRequired: '校园管理只能在组织内部使用，请从对应组织的插件分组进入。',
+    publicPluginLocked: '当前从公共插件入口进入，校园管理功能已锁定。请先进入具体组织，再打开校园管理。',
   },
 }

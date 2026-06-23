@@ -37,6 +37,7 @@ import { ref, computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { isInIframe, getToken, setToken, removeToken } from './utils/token'
 import { usePluginMessageBridge } from './composables/usePluginMessageBridge'
+import { clearHostPluginConfig, setHostPluginConfig } from './composables/useHostPluginContext'
 import { setThemeFromConfig } from './composables/useTheme'
 
 declare const __APP_VERSION__: string
@@ -59,6 +60,7 @@ usePluginMessageBridge({
       setToken(payload.token)
       hasToken.value = true
     }
+    setHostPluginConfig(payload.config)
     setThemeFromConfig(payload.config)
   },
   onTokenUpdate: (newToken) => {
@@ -69,6 +71,7 @@ usePluginMessageBridge({
   },
   onDestroy: () => {
     removeToken()
+    clearHostPluginConfig()
     hasToken.value = false
   }
 })

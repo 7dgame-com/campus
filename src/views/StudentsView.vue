@@ -3,12 +3,11 @@
     <section class="page-header">
       <div>
         <h2>组织账号</h2>
-        <p>按学校边界维护老师和学生账号的密码、资源、场景归属。</p>
+        <p>维护当前组织内老师和学生账号的密码、资源、场景归属。</p>
       </div>
       <div v-if="canManageAccounts" class="header-actions">
         <el-button :icon="Key" type="primary" :disabled="!canOperate" @click="openPasswordDialog()">批量改密码</el-button>
-        <el-button :icon="Delete" type="danger" plain :disabled="!canOperate" @click="openClearDialog()">批量清空</el-button>
-        <el-button :icon="Upload" :disabled="!canOperate" @click="openImportDialog()">批量导入场景</el-button>
+        <el-button :icon="Brush" type="danger" plain :disabled="!canOperate" @click="openClearDialog()">批量清空</el-button>
         <el-button :icon="Upload" :disabled="!canOperate" @click="openResourceDialog()">批量上传资源</el-button>
       </div>
     </section>
@@ -22,16 +21,7 @@
         @clear="refreshFromFirstPage"
         @keyup.enter="refreshFromFirstPage"
       />
-      <el-select
-        v-model="organizationId"
-        clearable
-        filterable
-        placeholder="学校边界"
-        style="width: 240px"
-        @change="refreshFromFirstPage"
-      >
-        <el-option v-for="org in organizations" :key="org.id" :label="org.title" :value="org.id" />
-      </el-select>
+      <el-tag size="large" type="info">当前组织：{{ organizationTitle }}</el-tag>
       <el-button :icon="Refresh" @click="refreshFromFirstPage">查询</el-button>
     </section>
 
@@ -56,12 +46,9 @@
             <el-tag :type="roleTagType(highestRole(row.roles))" size="small">{{ roleLabel(highestRole(row.roles)) }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="学校边界" min-width="220">
+        <el-table-column label="组织" min-width="180">
           <template #default="{ row }">
-            <div v-if="row.organizations?.length" class="tag-list">
-              <el-tag v-for="org in row.organizations" :key="org.id" size="small" type="info">{{ org.title }}</el-tag>
-            </div>
-            <span v-else>-</span>
+            <el-tag size="small" type="info">{{ organizationLabel(row) }}</el-tag>
           </template>
         </el-table-column>
         <el-table-column v-if="canManageAccounts" label="内容" width="150">
@@ -74,12 +61,11 @@
         <el-table-column prop="created_at" label="创建时间" width="180">
           <template #default="{ row }">{{ formatTimestamp(row.created_at) }}</template>
         </el-table-column>
-        <el-table-column v-if="canManageAccounts" label="操作" width="340" fixed="right">
+        <el-table-column v-if="canManageAccounts" label="操作" width="260" fixed="right">
           <template #default="{ row }">
             <div class="row-actions">
               <el-button link :icon="Key" type="primary" @click="openPasswordDialog(row)">改密码</el-button>
-              <el-button link :icon="Delete" type="danger" @click="openClearDialog(row)">清空</el-button>
-              <el-button link :icon="Upload" @click="openImportDialog(row)">导入场景</el-button>
+              <el-button link :icon="Brush" type="danger" @click="openClearDialog(row)">清空</el-button>
               <el-button link :icon="Upload" @click="openResourceDialog(row)">上传资源</el-button>
             </div>
           </template>
@@ -102,7 +88,17 @@
     <el-dialog v-model="passwordDialogVisible" title="修改密码" width="460px">
       <div class="dialog-body">
         <el-alert :title="targetSummary" type="info" :closable="false" show-icon />
-        <el-input v-model="temporaryPassword" type="password" show-password placeholder="临时密码" />
+        <div class="password-field">
+          <el-input
+            v-model="temporaryPassword"
+            type="password"
+            show-password
+            placeholder="临时密码"
+            maxlength="64"
+            autocomplete="new-password"
+          />
+          <p class="password-policy-hint">{{ PASSWORD_POLICY_HINT }}</p>
+        </div>
       </div>
       <template #footer>
         <el-button @click="passwordDialogVisible = false">取消</el-button>
@@ -131,30 +127,27 @@
       </template>
     </el-dialog>
 
-    <el-dialog v-model="importDialogVisible" title="导入场景" width="520px">
+    <el-dialog
+      v-model="resourceDialogVisible"
+      title="上传资源"
+      width="560px"
+      :close-on-click-modal="!resourceSubmitting"
+      :close-on-press-escape="!resourceSubmitting"
+      :show-close="!resourceSubmitting"
+    >
       <div class="dialog-body">
         <el-alert :title="targetSummary" type="info" :closable="false" show-icon />
-        <el-upload
-          drag
-          accept=".zip,application/zip"
-          :auto-upload="false"
-          :limit="1"
-          :on-change="handleImportFileChange"
-          :on-remove="handleImportFileRemove"
-        >
-          <el-icon class="upload-icon"><Upload /></el-icon>
-          <div class="el-upload__text">拖入 ZIP 文件或点击选择</div>
-        </el-upload>
-      </div>
-      <template #footer>
-        <el-button @click="importDialogVisible = false">取消</el-button>
-        <el-button type="primary" :loading="importSubmitting" :disabled="!importFile" @click="submitImportScene">确认导入</el-button>
-      </template>
-    </el-dialog>
-
-    <el-dialog v-model="resourceDialogVisible" title="上传资源" width="560px">
-      <div class="dialog-body">
-        <el-alert :title="targetSummary" type="info" :closable="false" show-icon />
+        <el-alert
+          v-if="resourceBatchProgress"
+          :title="`正在上传第 ${resourceBatchProgress.current}/${resourceBatchProgress.total} 个账号：${resourceBatchProgress.username}`"
+          type="success"
+          :closable="false"
+          show-icon
+        />
+        <div v-if="resourceStorageProgress" class="resource-progress">
+          <span>{{ resourceStorageProgress.label }}</span>
+          <el-progress :percentage="Math.round(resourceStorageProgress.progress * 100)" />
+        </div>
         <el-form label-position="top">
           <el-form-item label="资源文件">
             <el-upload
@@ -173,9 +166,10 @@
             <el-input v-model="resourceName" placeholder="默认使用文件名" />
           </el-form-item>
           <el-form-item label="资源类型">
-            <el-select v-model="resourceType" style="width: 100%">
-              <el-option v-for="type in resourceTypeOptions" :key="type.value" :label="type.label" :value="type.value" />
-            </el-select>
+            <div class="detected-resource-type">
+              <el-tag v-if="resourceType" type="info">{{ resourceTypeLabel }}</el-tag>
+              <span v-else>选择文件后自动识别</span>
+            </div>
           </el-form-item>
           <el-form-item label="资源说明">
             <el-input v-model="resourceInfo" type="textarea" :rows="2" placeholder="可选" />
@@ -183,8 +177,10 @@
         </el-form>
       </div>
       <template #footer>
-        <el-button @click="resourceDialogVisible = false">取消</el-button>
-        <el-button type="primary" :loading="resourceSubmitting" :disabled="!resourceFile || !resourceType" @click="submitUploadResource">确认上传</el-button>
+        <el-button :disabled="resourceSubmitting" @click="resourceDialogVisible = false">取消</el-button>
+        <el-button type="primary" :loading="resourceSubmitting" :disabled="!resourceFile || !resourceType" @click="submitUploadResource">
+          {{ resourceBatchProgress ? `上传中 ${resourceBatchProgress.current}/${resourceBatchProgress.total}` : '确认上传' }}
+        </el-button>
       </template>
     </el-dialog>
 
@@ -207,35 +203,37 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { ElMessage, ElMessageBox, type UploadFile } from 'element-plus'
-import { Delete, Key, Refresh, Upload } from '@element-plus/icons-vue'
+import { Brush, Key, Refresh, Upload } from '@element-plus/icons-vue'
 import {
   clearCampusContent,
-  importCampusSceneZip,
   listCampusManagedUsers,
-  listOrganizations,
-  listUsers,
   previewCampusClearContent,
   updateCampusUserPassword,
   uploadCampusResource,
   type CampusClearPreview,
   type CampusManagedUser,
   type CampusOperationResult,
-  type OrganizationSummary,
-  type UserItem,
 } from '../api'
+import { useCurrentOrganization } from '../composables/useCurrentOrganization'
 import { usePermissions } from '../composables/usePermissions'
+import { ensureMainUploadedFile, type MainUploadedFile } from '../services/mainFileUpload'
 import { formatTimestamp, normalizeList, normalizeTotal } from '../utils/apiData'
 
 const ROLE_PRIORITY: Record<string, number> = { root: 4, admin: 3, manager: 2, user: 1 }
 const RESOURCE_UPLOAD_MAX_BYTES = 200 * 1024 * 1024
-const { can, primaryRole } = usePermissions()
+const PASSWORD_POLICY_HINT = '密码要求：8-64 位，需包含大写字母、小写字母、数字、特殊字符中的至少 3 类，且不能包含用户名或邮箱信息。'
+const { can } = usePermissions()
+const {
+  organization,
+  organizationId,
+  organizationTitle,
+  loadCurrentOrganization,
+} = useCurrentOrganization()
 
 const users = ref<CampusManagedUser[]>([])
 const selectedUsers = ref<CampusManagedUser[]>([])
-const organizations = ref<OrganizationSummary[]>([])
 const loading = ref(false)
 const search = ref('')
-const organizationId = ref<number | ''>('')
 const page = ref(1)
 const pageSize = ref(20)
 const total = ref(0)
@@ -248,45 +246,45 @@ const clearDialogVisible = ref(false)
 const clearPreview = ref<CampusClearPreview | null>(null)
 const clearPreviewLoading = ref(false)
 const clearSubmitting = ref(false)
-const importDialogVisible = ref(false)
-const importFile = ref<File | null>(null)
-const importSubmitting = ref(false)
 const resourceDialogVisible = ref(false)
 const resourceFile = ref<File | null>(null)
 const resourceName = ref('')
-const resourceType = ref('polygen')
+type ResourceType = 'polygen' | 'picture' | 'video' | 'audio' | 'file'
+
+const resourceType = ref<ResourceType | ''>('')
 const resourceInfo = ref('')
 const resourceSubmitting = ref(false)
+const resourceBatchProgress = ref<{ current: number; total: number; username: string } | null>(null)
+const resourceStorageProgress = ref<{ label: string; progress: number } | null>(null)
 const resultDialogVisible = ref(false)
 const resultTitle = ref('')
 const operationResults = ref<CampusOperationResult[]>([])
-const resourceTypeOptions = [
+const resourceTypeOptions: Array<{ label: string; value: ResourceType }> = [
   { label: '3D 模型', value: 'polygen' },
-  { label: '体素', value: 'voxel' },
   { label: '图片', value: 'picture' },
   { label: '视频', value: 'video' },
   { label: '音频', value: 'audio' },
-  { label: '粒子', value: 'particle' },
   { label: '其他文件', value: 'file' },
 ]
-const resourceAcceptByType: Record<string, string> = {
+const resourceAcceptByType: Record<ResourceType, string> = {
   polygen: '.glb,.gltf,.fbx,.obj,.stl',
-  voxel: '.vox',
   picture: '.jpg,.jpeg,.png,.gif,.webp',
   video: '.mp4,.webm,.mov',
   audio: '.mp3,.wav,.ogg,.m4a',
-  particle: '.json',
   file: '.pdf,.zip,.rar,.7z',
 }
 
 const canManageAccounts = computed(() => can('manage-student-accounts'))
-const canOperate = computed(() => canManageAccounts.value && organizationId.value !== '')
-const resourceAccept = computed(() => resourceAcceptByType[resourceType.value] ?? '')
+const canOperate = computed(() => canManageAccounts.value && organizationId.value !== null)
+const resourceAccept = computed(() => Object.values(resourceAcceptByType).join(','))
+const resourceTypeLabel = computed(() =>
+  resourceTypeOptions.find((type) => type.value === resourceType.value)?.label ?? '未识别'
+)
 
 const targetSummary = computed(() => {
   if (activeUser.value) return `目标账号：${activeUser.value.username}`
   if (selectedUsers.value.length) return `目标账号：已选 ${selectedUsers.value.length} 个账号`
-  return '目标账号：当前学校全部可管理账号'
+  return '目标账号：当前组织全部可管理账号'
 })
 
 function highestRole(roles?: string[]) {
@@ -299,7 +297,7 @@ function roleLabel(role: string) {
     case 'root':
       return '管理员'
     case 'admin':
-      return '学校管理'
+      return '组织管理员'
     case 'manager':
       return '老师'
     default:
@@ -322,10 +320,16 @@ function targetUserIds() {
 
 function requireOrganization() {
   if (!organizationId.value) {
-    ElMessage.warning('请选择学校边界')
+    ElMessage.warning('当前组织尚未加载完成')
     return null
   }
   return organizationId.value
+}
+
+function organizationLabel(row: CampusManagedUser) {
+  const currentOrganizationId = organizationId.value
+  const rowOrganization = row.organizations?.find((item) => item.id === currentOrganizationId)
+  return rowOrganization?.title ?? organization.value?.title ?? organizationTitle.value
 }
 
 function showResults(title: string, results: CampusOperationResult[], successCount: number, failedCount: number) {
@@ -345,34 +349,26 @@ function refreshFromFirstPage() {
   loadUsers()
 }
 
-async function loadOrganizations() {
-  try {
-    const { data } = await listOrganizations()
-    organizations.value = normalizeList<OrganizationSummary>(data)
-    if (!organizationId.value && primaryRole.value === 'admin' && organizations.value.length === 1) {
-      organizationId.value = organizations.value[0].id
-    }
-  } catch {
-    organizations.value = []
-  }
-}
-
 async function loadUsers() {
+  const orgId = requireOrganization()
+  if (!orgId) {
+    users.value = []
+    total.value = 0
+    return
+  }
+
   loading.value = true
   try {
     const params: Record<string, unknown> = {
       page: page.value,
       pageSize: pageSize.value,
+      organization_id: orgId,
     }
     if (search.value.trim()) params.search = search.value.trim()
-    if (organizationId.value) params.organization_id = organizationId.value
 
-    const request = canManageAccounts.value
-      ? listCampusManagedUsers(params)
-      : listUsers(params)
-    const { data } = await request
-    users.value = normalizeList<CampusManagedUser | UserItem>(data) as CampusManagedUser[]
-    total.value = normalizeTotal<CampusManagedUser | UserItem>(data)
+    const { data } = await listCampusManagedUsers(params)
+    users.value = normalizeList<CampusManagedUser>(data)
+    total.value = normalizeTotal<CampusManagedUser>(data)
     selectedUsers.value = []
   } catch {
     users.value = []
@@ -472,49 +468,15 @@ async function submitClearContent() {
   }
 }
 
-function openImportDialog(user?: CampusManagedUser) {
-  if (!requireOrganization()) return
-  activeUser.value = user ?? null
-  importFile.value = null
-  importDialogVisible.value = true
-}
-
-function handleImportFileChange(uploadFile: UploadFile) {
-  importFile.value = uploadFile.raw ?? null
-}
-
-function handleImportFileRemove() {
-  importFile.value = null
-}
-
-async function submitImportScene() {
-  const orgId = requireOrganization()
-  if (!orgId || !importFile.value) return
-
-  importSubmitting.value = true
-  try {
-    const { data } = await importCampusSceneZip({
-      organization_id: orgId,
-      user_ids: targetUserIds(),
-      file: importFile.value,
-    })
-    importDialogVisible.value = false
-    showResults('导入场景', data.data.results, data.data.success_count, data.data.failed_count)
-    await loadUsers()
-  } catch {
-    ElMessage.error('导入场景失败')
-  } finally {
-    importSubmitting.value = false
-  }
-}
-
 function openResourceDialog(user?: CampusManagedUser) {
   if (!requireOrganization()) return
   activeUser.value = user ?? null
   resourceFile.value = null
   resourceName.value = ''
-  resourceType.value = 'polygen'
+  resourceType.value = ''
   resourceInfo.value = ''
+  resourceBatchProgress.value = null
+  resourceStorageProgress.value = null
   resourceDialogVisible.value = true
 }
 
@@ -530,28 +492,62 @@ function handleResourceFileChange(uploadFile: UploadFile) {
   if (!resourceName.value.trim()) {
     resourceName.value = stripFileExtension(resourceFile.value.name)
   }
-  resourceType.value = inferResourceType(resourceFile.value)
+
+  const detectedType = inferResourceType(resourceFile.value)
+  if (!detectedType) {
+    ElMessage.warning('暂不支持该资源格式')
+    resourceFile.value = null
+    resourceType.value = ''
+    return
+  }
+
+  resourceType.value = detectedType
 }
 
 function handleResourceFileRemove() {
   resourceFile.value = null
   resourceName.value = ''
-  resourceType.value = 'polygen'
+  resourceType.value = ''
+  resourceStorageProgress.value = null
 }
 
 async function submitUploadResource() {
   const orgId = requireOrganization()
-  if (!orgId || !resourceFile.value) return
+  if (!orgId || !resourceFile.value || !resourceType.value) return
 
   resourceSubmitting.value = true
   try {
-    const { data } = await uploadCampusResource({
+    const uploadedFile = await ensureMainUploadedFile(resourceFile.value, {
+      directory: resourceStorageDirectory(resourceType.value),
+      onHashProgress: (progress) => {
+        resourceStorageProgress.value = { label: '计算文件 MD5', progress }
+      },
+      onUploadProgress: (progress) => {
+        resourceStorageProgress.value = { label: '确认资源文件', progress }
+      },
+    })
+    const resourcePayload = {
       organization_id: orgId,
-      user_ids: targetUserIds(),
-      file: resourceFile.value,
+      file: uploadedFile,
       name: resourceName.value || stripFileExtension(resourceFile.value.name),
       type: resourceType.value,
       info: resourceInfo.value,
+    }
+    const targets = activeUser.value ? [] : selectedUsers.value.slice()
+
+    if (targets.length > 1) {
+      const results = await uploadResourceForSelectedUsersSequentially(resourcePayload, targets)
+      const successCount = results.filter((result) => result.success).length
+      const failedCount = results.length - successCount
+      resourceDialogVisible.value = false
+      showResults('上传资源', results, successCount, failedCount)
+      await loadUsers()
+      return
+    }
+
+    const { data } = await uploadCampusResource({
+      ...resourcePayload,
+      user_ids: targetUserIds(),
     })
     resourceDialogVisible.value = false
     showResults('上传资源', data.data.results, data.data.success_count, data.data.failed_count)
@@ -560,27 +556,80 @@ async function submitUploadResource() {
     ElMessage.error('上传资源失败')
   } finally {
     resourceSubmitting.value = false
+    resourceBatchProgress.value = null
+    resourceStorageProgress.value = null
   }
+}
+
+async function uploadResourceForSelectedUsersSequentially(
+  payload: {
+    organization_id: number
+    file: MainUploadedFile
+    name: string
+    type: ResourceType
+    info: string
+  },
+  targets: CampusManagedUser[],
+): Promise<CampusOperationResult[]> {
+  const results: CampusOperationResult[] = []
+
+  for (const [index, user] of targets.entries()) {
+    resourceBatchProgress.value = {
+      current: index + 1,
+      total: targets.length,
+      username: user.username,
+    }
+
+    try {
+      const { data } = await uploadCampusResource({
+        ...payload,
+        user_ids: [user.id],
+      })
+      results.push(...data.data.results)
+    } catch (error) {
+      results.push({
+        user_id: user.id,
+        username: user.username,
+        success: false,
+        message: '上传失败',
+        error: requestErrorMessage(error),
+      })
+    }
+  }
+
+  return results
 }
 
 function stripFileExtension(filename: string) {
   return filename.replace(/\.[^/.]+$/, '') || filename
 }
 
-function inferResourceType(file: File) {
+function inferResourceType(file: File): ResourceType | '' {
   const mimeType = file.type.toLowerCase()
   const extension = file.name.split('.').pop()?.toLowerCase() ?? ''
 
-  if (mimeType.startsWith('image/')) return 'picture'
-  if (mimeType.startsWith('video/')) return 'video'
-  if (mimeType.startsWith('audio/')) return 'audio'
-  if (extension === 'vox') return 'voxel'
   if (['glb', 'gltf', 'fbx', 'obj', 'stl'].includes(extension)) return 'polygen'
-  return 'file'
+  if (mimeType.startsWith('image/') || ['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(extension)) return 'picture'
+  if (mimeType.startsWith('video/') || ['mp4', 'webm', 'mov'].includes(extension)) return 'video'
+  if (mimeType.startsWith('audio/') || ['mp3', 'wav', 'ogg', 'm4a'].includes(extension)) return 'audio'
+  if (['pdf', 'zip', 'rar', '7z'].includes(extension)) return 'file'
+  return ''
+}
+
+function resourceStorageDirectory(type: ResourceType): string {
+  return type
+}
+
+function requestErrorMessage(error: unknown): string {
+  const err = error as {
+    response?: { data?: { message?: string; error?: string } }
+    message?: string
+  }
+  return err.response?.data?.message || err.response?.data?.error || err.message || '请求失败'
 }
 
 onMounted(async () => {
-  await loadOrganizations()
+  await loadCurrentOrganization()
   await loadUsers()
 })
 </script>
@@ -660,6 +709,18 @@ onMounted(async () => {
   gap: var(--spacing-md);
 }
 
+.password-field {
+  display: grid;
+  gap: var(--spacing-xs);
+}
+
+.password-policy-hint {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+  line-height: 1.5;
+}
+
 .preview-box {
   display: grid;
   gap: var(--spacing-sm);
@@ -668,6 +729,19 @@ onMounted(async () => {
 .upload-icon {
   font-size: 28px;
   color: var(--primary-color);
+}
+
+.detected-resource-type {
+  min-height: 32px;
+  display: flex;
+  align-items: center;
+  color: var(--text-secondary);
+}
+
+.resource-progress {
+  display: grid;
+  gap: var(--spacing-xs);
+  color: var(--text-secondary);
 }
 
 @media (max-width: 760px) {

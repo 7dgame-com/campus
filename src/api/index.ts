@@ -251,6 +251,15 @@ export interface CampusClearPreview {
   } & CampusContentCounts>
 }
 
+export interface CampusUploadedFilePayload {
+  filename: string
+  key: string
+  url?: string
+  md5: string
+  size: number
+  mime_type?: string
+}
+
 export interface GroupItem {
   id: number
   name?: string
@@ -354,30 +363,23 @@ export function importCampusSceneZip(payload: {
 export function uploadCampusResource(payload: {
   organization_id: number
   user_ids?: number[]
-  file: File
+  file: CampusUploadedFilePayload
   name?: string
   type?: string
   info?: string
 }) {
-  const formData = new FormData()
-  formData.append('organization_id', String(payload.organization_id))
-  formData.append('file', payload.file)
-  formData.append('filename', payload.file.name)
-  if (payload.user_ids?.length) {
-    formData.append('user_ids', JSON.stringify(payload.user_ids))
-  }
-  if (payload.name?.trim()) {
-    formData.append('name', payload.name.trim())
-  }
-  if (payload.type) {
-    formData.append('type', payload.type)
-  }
-  if (payload.info?.trim()) {
-    formData.append('info', payload.info.trim())
-  }
-
-  return campusApi.post<CampusOperationResponse>('/users/upload-resource', formData, {
-    headers: { 'Content-Type': 'multipart/form-data' },
+  return campusApi.post<CampusOperationResponse>('/users/upload-resource', {
+    organization_id: payload.organization_id,
+    user_ids: payload.user_ids,
+    filename: payload.file.filename,
+    key: payload.file.key,
+    url: payload.file.url,
+    md5: payload.file.md5,
+    size: payload.file.size,
+    mime_type: payload.file.mime_type,
+    name: payload.name?.trim() || undefined,
+    type: payload.type,
+    info: payload.info?.trim() || undefined,
   })
 }
 

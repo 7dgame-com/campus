@@ -49,6 +49,13 @@
         <div v-if="!ready" class="loading-state">
           <el-icon class="is-loading" :size="24"><Loading /></el-icon>
         </div>
+        <div v-else-if="loaded && !hasOrganizationContext" class="locked-state">
+          <el-result
+            icon="warning"
+            :title="$t('permission.organizationRequiredTitle')"
+            :sub-title="organizationRequiredMessage"
+          />
+        </div>
         <div v-else-if="loaded && !hasAny()" class="no-permission">
           <el-empty :description="$t('permission.noPermission')" />
         </div>
@@ -60,6 +67,7 @@
 
 <script setup lang="ts">
 import { computed, markRaw, onMounted, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import {
   Close,
   Collection,
@@ -74,7 +82,16 @@ import { useAuthSession } from '../composables/useAuthSession'
 import { usePermissions, type CampusPermission } from '../composables/usePermissions'
 
 const { user } = useAuthSession()
-const { fetchPermissions, can, hasAny, loaded, primaryRole } = usePermissions()
+const { t } = useI18n()
+const {
+  fetchPermissions,
+  can,
+  hasAny,
+  loaded,
+  primaryRole,
+  hasOrganizationContext,
+  isPublicPluginGroup,
+} = usePermissions()
 
 const sidebarOpen = ref(false)
 const userInfo = computed(() => user.value)
@@ -84,15 +101,20 @@ const roleLabel = computed(() => {
     case 'root':
       return '管理员'
     case 'admin':
-      return '学校管理'
+      return '组织管理员'
     case 'manager':
-      return '老师'
+      return '组织管理员'
     case 'user':
       return '学生'
     default:
       return '未授权'
   }
 })
+const organizationRequiredMessage = computed(() =>
+  isPublicPluginGroup.value
+    ? t('permission.publicPluginLocked')
+    : t('permission.organizationRequired'),
+)
 
 const navItems: Array<{
   to: string
@@ -262,7 +284,8 @@ onMounted(async () => {
 }
 
 .loading-state,
-.no-permission {
+.no-permission,
+.locked-state {
   min-height: 360px;
   display: flex;
   align-items: center;

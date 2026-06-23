@@ -1,8 +1,8 @@
 export default {
   pluginMeta: {
     name: 'Campus Management',
-    description: 'Unified entry for schools, classes, student accounts, and teaching tools',
-    groupName: 'Education',
+    description: 'Unified entry for organization accounts, resources, scenes, and teaching tools',
+    groupName: 'Organization Plugins',
   },
   common: {
     loading: 'Loading...',
@@ -13,7 +13,7 @@ export default {
   },
   nav: {
     dashboard: 'Overview',
-    schools: 'Schools',
+    schools: 'Organization',
     classes: 'Classes',
     students: 'Students',
     tools: 'Teaching Tools',
@@ -22,7 +22,7 @@ export default {
   dashboard: {
     eyebrow: 'Campus Scenario',
     title: 'Campus Management Tool',
-    description: 'A school-facing management path built on existing organization, user, group, and plugin authorization capabilities.',
+    description: 'An organization-scoped data management path built on existing organization, user, and plugin authorization capabilities.',
     currentRole: 'Current Role',
     workflowTitle: 'Typical Workflow',
     mappingTitle: 'Campus Object Mapping',
@@ -37,6 +37,9 @@ export default {
     goToDiagnostics: 'Go to API diagnostics',
   },
   permission: {
-    noPermission: 'Campus management requires a root, admin, or manager role',
+    noPermission: 'You do not have campus management access for this organization. Root can manage every organization; admin or manager must belong to the current organization.',
+    organizationRequiredTitle: 'Organization context required',
+    organizationRequired: 'Campus management only works inside an organization. Open it from the matching organization plugin group.',
+    publicPluginLocked: 'Campus management was opened from Public Plugins, so its functions are locked. Enter a specific organization first, then open Campus Management.',
   },
 }

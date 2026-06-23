@@ -35,7 +35,7 @@ const router = createRouter({
           path: 'schools',
           name: 'Schools',
           component: () => import('../views/SchoolsView.vue'),
-          meta: { title: '学校管理', requiresPermission: 'view-schools' },
+          meta: { title: '组织信息', requiresPermission: 'view-schools' },
         },
         {
           path: 'classes',

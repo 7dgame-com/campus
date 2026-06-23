@@ -3,7 +3,7 @@
     <section class="page-header">
       <div>
         <h2>教学工具</h2>
-        <p>这里汇总平台已有教学工具入口，工具启停、学校归属和菜单可见性仍由插件注册管理维护。</p>
+        <p>这里汇总当前组织可用的教学工具入口，工具启停、组织归属和菜单可见性仍由插件注册管理维护。</p>
       </div>
       <el-button v-if="can('manage-global-tools')" type="primary" @click="openPluginRegistry">
         插件注册管理
@@ -56,8 +56,8 @@ const teachingTools = [
   {
     id: 'user-management',
     name: '平台用户管理',
-    description: '维护平台账号、角色、学校边界和邀请注册链接。',
-    scope: '账号与学校边界',
+    description: '维护平台账号、角色、组织归属和邀请注册链接。',
+    scope: '账号与组织归属',
     visibility: '管理员',
     status: '已有插件',
     statusType: 'success' as const,
@@ -118,9 +118,9 @@ const teachingTools = [
 const visibleTeachingTools = computed(() => teachingTools.filter((tool) => can(tool.permission)))
 
 const reviewItems = [
-  { item: '管理对象清晰', description: '学校、班级、学生、老师均映射到现有 Organization / Group / User。', owner: '校园插件' },
-  { item: '权限边界合理', description: 'root 为管理员，admin 为学校管理，manager 为老师，user 为学生，各身份看到不同界面。', owner: '校园插件 + 主后端' },
-  { item: '账号操作受控', description: '学校管理只在校园插件内改密码、清空内容、导入场景，不提供增删账号入口。', owner: '校园插件 + 主后端' },
+  { item: '管理对象清晰', description: '校园管理绑定一个 Organization，只管理该组织内的账号和账号名下内容。', owner: '校园插件' },
+  { item: '权限边界合理', description: 'root 可进入任何组织；admin 和 manager 必须属于当前组织才是管理员。', owner: '校园插件 + 主后端' },
+  { item: '账号操作受控', description: '组织内管理只改密码、清空内容、上传资源，不提供增删账号入口。', owner: '校园插件 + 主后端' },
   { item: '工具开放可控', description: '工具入口按插件注册配置和 accessScope 控制，不在校园插件新增独立权限源。', owner: 'system-admin' },
   { item: '后续扩展平滑', description: '新增数字课程插件后，只需注册为平台插件，再在校园工具页增加入口。', owner: '插件体系' },
 ]
