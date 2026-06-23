@@ -1,8 +1,8 @@
 export default {
   pluginMeta: {
     name: '校園管理',
-    description: '整合學校、班級、學生帳號和教學工具入口',
-    groupName: '教學管理',
+    description: '整合目前組織內帳號、資源、場景和教學工具入口',
+    groupName: '組織外掛',
   },
   common: {
     loading: '載入中...',
@@ -13,7 +13,7 @@ export default {
   },
   nav: {
     dashboard: '總覽',
-    schools: '學校',
+    schools: '組織',
     classes: '班級',
     students: '學生',
     tools: '教學工具',
@@ -22,7 +22,7 @@ export default {
   dashboard: {
     eyebrow: '校園場景方案',
     title: '校園管理工具',
-    description: '以既有基礎外掛能力為底座，將組織、使用者、小組和外掛授權轉換為學校可理解、可審閱、可落地的管理路徑。',
+    description: '以既有基礎外掛能力為底座，將組織、使用者和外掛授權轉換為組織內可審閱、可落地的資料管理路徑。',
     currentRole: '目前身分',
     workflowTitle: '典型使用流程',
     mappingTitle: '校園物件映射',
@@ -37,6 +37,9 @@ export default {
     goToDiagnostics: '前往 API 診斷頁面 →',
   },
   permission: {
-    noPermission: '您沒有校園管理權限，請聯絡管理員配置 root、admin 或 manager 角色',
+    noPermission: '您沒有目前組織的校園管理權限。root 可管理全部組織，admin 或 manager 需屬於目前組織。',
+    organizationRequiredTitle: '需要組織上下文',
+    organizationRequired: '校園管理只能在組織內部使用，請從對應組織的外掛分組進入。',
+    publicPluginLocked: '目前從公共外掛入口進入，校園管理功能已鎖定。請先進入具體組織，再開啟校園管理。',
   },
 }

@@ -29,6 +29,7 @@
 
 <script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue'
+import { useCurrentOrganization } from '../composables/useCurrentOrganization'
 import { formatDiagnosticOutcome, type DiagnosticStatus } from '../utils/diagnostics'
 
 interface DiagnosticCheck {
@@ -39,6 +40,7 @@ interface DiagnosticCheck {
 }
 
 const running = ref(false)
+const { organizationId, loadCurrentOrganization } = useCurrentOrganization()
 const checks = reactive<DiagnosticCheck[]>([
   {
     name: 'Token 校验',
@@ -47,19 +49,19 @@ const checks = reactive<DiagnosticCheck[]>([
     message: '-',
   },
   {
-    name: '学校边界',
+    name: '组织信息',
     url: '/api/v1/organization/list',
     status: 'pending',
     message: '-',
   },
   {
-    name: '班级/小组',
-    url: '/api/v1/group',
+    name: '组织账号',
+    url: '/api/v1/plugin-campus/users?organization_id=',
     status: 'pending',
     message: '-',
   },
   {
-    name: '学生账号',
+    name: '只读账号',
     url: '/api-auth/v1/plugin-user/users',
     status: 'pending',
     message: '-',
@@ -91,11 +93,19 @@ async function readResponseMessage(response: Response): Promise<string | undefin
 
 async function runChecks() {
   running.value = true
+  await loadCurrentOrganization()
   await Promise.all(checks.map(async (check) => {
     check.status = 'pending'
     check.message = '检测中'
     try {
-      const response = await fetchWithTimeout(check.url)
+      const url = check.name === '组织账号'
+        ? `/api/v1/plugin-campus/users?organization_id=${organizationId.value ?? ''}`
+        : check.url
+      check.url = url
+      if (check.name === '组织账号' && !organizationId.value) {
+        throw new Error('当前组织尚未解析')
+      }
+      const response = await fetchWithTimeout(url)
       const outcome = formatDiagnosticOutcome(response.status, await readResponseMessage(response))
       check.status = outcome.status
       check.message = outcome.message

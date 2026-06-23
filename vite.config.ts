@@ -26,8 +26,6 @@ export function buildPluginManifest(): string {
 
   const nameI18n: Record<string, string> = {}
   const descriptionI18n: Record<string, string> = {}
-  const groupNameI18n: Record<string, string> = {}
-
   for (const lang of langs) {
     const file = path.join(localesDir, `${lang}.ts`)
     if (!fs.existsSync(file)) continue
@@ -40,11 +38,9 @@ export function buildPluginManifest(): string {
 
     const name = extract('name')
     const description = extract('description')
-    const groupName = extract('groupName')
 
     if (name) nameI18n[lang] = name
     if (description) descriptionI18n[lang] = description
-    if (groupName) groupNameI18n[lang] = groupName
   }
 
   const manifest = {
@@ -52,10 +48,6 @@ export function buildPluginManifest(): string {
     schemaVersion: '1',
     nameI18n,
     descriptionI18n,
-    group: {
-      id: 'education',
-      nameI18n: groupNameI18n,
-    },
   }
 
   return JSON.stringify(manifest, null, 2)

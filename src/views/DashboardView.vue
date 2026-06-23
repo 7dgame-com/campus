@@ -62,26 +62,27 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { ElMessage } from 'element-plus'
-import { listCampusManagedUsers, listGroups, listOrganizations, listUsers } from '../api'
+import { listCampusManagedUsers } from '../api'
+import { useCurrentOrganization } from '../composables/useCurrentOrganization'
 import { useAuthSession } from '../composables/useAuthSession'
 import { usePermissions } from '../composables/usePermissions'
-import { normalizeList, normalizeTotal } from '../utils/apiData'
+import { normalizeTotal } from '../utils/apiData'
 
 const { user } = useAuthSession()
 const { primaryRole, can } = usePermissions()
+const { organizationId, organizationTitle, loadCurrentOrganization } = useCurrentOrganization()
 
-const schoolCount = ref('-')
-const groupCount = ref('-')
+const organizationValue = computed(() => organizationTitle.value || '-')
 const userCount = ref('-')
 
 const roleHint = computed(() => {
   switch (primaryRole.value) {
     case 'root':
-      return '管理员视角，可维护学校初始化、全局插件入口和所有校园聚合信息。'
+      return '管理员视角，可维护当前组织内账号、资源、场景和教学入口。'
     case 'admin':
-      return '学校管理视角，可维护学校、班级、学生账号和校内教学入口。'
+      return '组织管理员视角，可维护当前组织内账号和教学入口。'
     case 'manager':
-      return '老师视角，可处理班级、小组、学生查看和教学工具入口。'
+      return '组织管理员视角，可维护当前组织内老师、学生账号和教学内容。'
     case 'user':
       return '学生账号不使用校园管理插件，请从课程工具入口进入学习内容。'
     default:
@@ -90,8 +91,7 @@ const roleHint = computed(() => {
 })
 
 const metrics = computed(() => [
-  ...(can('view-schools') ? [{ label: '学校', value: schoolCount.value, note: 'Organization' }] : []),
-  ...(can('view-classes') ? [{ label: '班级/小组', value: groupCount.value, note: 'Group' }] : []),
+  ...(can('view-schools') ? [{ label: '当前组织', value: organizationValue.value, note: 'Organization' }] : []),
   ...(can('view-students') ? [{ label: '账号', value: userCount.value, note: 'User' }] : []),
   { label: '工具入口', value: '已有插件', note: 'Plugin' },
 ])
@@ -99,27 +99,24 @@ const metrics = computed(() => [
 const workflowSteps = computed(() => {
   if (primaryRole.value === 'root') {
     return [
-      { index: '1', title: '初始化学校', description: '维护学校边界和平台级入口。', to: '/schools' },
-      { index: '2', title: '整理班级', description: '复用 Group 管理班级或项目组。', to: '/classes' },
-      { index: '3', title: '管理账号', description: '维护组织账号、资源和场景归属。', to: '/students' },
-      { index: '4', title: '配置工具', description: '进入 system-admin 维护插件注册。', to: '/tools' },
+      { index: '1', title: '确认组织', description: '查看当前插件绑定的组织。', to: '/schools' },
+      { index: '2', title: '管理账号', description: '维护当前组织账号、资源和场景归属。', to: '/students' },
+      { index: '3', title: '配置工具', description: '进入 system-admin 维护插件注册。', to: '/tools' },
     ]
   }
 
   if (primaryRole.value === 'admin') {
     return [
-      { index: '1', title: '维护学校', description: '管理本校账号和工具开放边界。', to: '/schools' },
-      { index: '2', title: '管理班级', description: '按课程、年级或项目组织学生。', to: '/classes' },
-      { index: '3', title: '维护账号', description: '管理本校老师和学生账号内容。', to: '/students' },
-      { index: '4', title: '查看工具', description: '整理本校常用教学入口。', to: '/tools' },
+      { index: '1', title: '确认组织', description: '查看当前组织信息。', to: '/schools' },
+      { index: '2', title: '维护账号', description: '管理当前组织老师和学生账号内容。', to: '/students' },
+      { index: '3', title: '查看工具', description: '整理当前组织常用教学入口。', to: '/tools' },
     ]
   }
 
   if (primaryRole.value === 'manager') {
     return [
-      { index: '1', title: '管理班级', description: '维护课程班级和学习小组。', to: '/classes' },
-      { index: '2', title: '查看学生', description: '按学校和关键字查看学生账号。', to: '/students' },
-      { index: '3', title: '进入工具', description: '打开课程中使用的创作工具。', to: '/tools' },
+      { index: '1', title: '维护账号', description: '管理当前组织老师和学生账号内容。', to: '/students' },
+      { index: '2', title: '进入工具', description: '打开当前组织使用的创作工具。', to: '/tools' },
     ]
   }
 
@@ -127,30 +124,22 @@ const workflowSteps = computed(() => {
 })
 
 const mappings = [
-  { platform: 'Organization', campus: '学校', note: '控制账号、插件和菜单开放范围' },
-  { platform: 'Group', campus: '班级/小组', note: '复用现有小组协作能力' },
-  { platform: 'User', campus: '学生/老师', note: '学生 user 不进入本插件，老师为 manager，学校管理为 admin，管理员为 root' },
+  { platform: 'Organization', campus: '当前组织', note: '校园管理插件只管理当前组织内数据' },
+  { platform: 'User', campus: '学生/老师', note: '账号必须属于当前组织才会出现在本插件' },
+  { platform: 'Resource / Verse', campus: '资源/场景', note: '批量操作只作用于当前组织账号名下内容' },
   { platform: 'Plugin', campus: '教学工具', note: '由 system-admin 维护注册、启停和入口' },
 ]
 
 async function loadSummary() {
   try {
-    const [organizationsRes, groupsRes, usersRes] = await Promise.allSettled([
-      can('view-schools') ? listOrganizations() : Promise.resolve(null),
-      can('view-classes') ? listGroups({ 'per-page': 1 }) : Promise.resolve(null),
-      can('view-students')
-        ? (can('manage-student-accounts') ? listCampusManagedUsers({ page: 1, pageSize: 1 }) : listUsers({ page: 1, pageSize: 1 }))
-        : Promise.resolve(null),
-    ])
-
-    if (organizationsRes.status === 'fulfilled' && organizationsRes.value) {
-      schoolCount.value = String(normalizeList(organizationsRes.value.data).length)
-    }
-    if (groupsRes.status === 'fulfilled' && groupsRes.value) {
-      groupCount.value = String(normalizeTotal(groupsRes.value.data))
-    }
-    if (usersRes.status === 'fulfilled' && usersRes.value) {
-      userCount.value = String(normalizeTotal(usersRes.value.data))
+    await loadCurrentOrganization()
+    if (can('view-students') && organizationId.value) {
+      const { data } = await listCampusManagedUsers({
+        page: 1,
+        pageSize: 1,
+        organization_id: organizationId.value,
+      })
+      userCount.value = String(normalizeTotal(data))
     }
   } catch {
     ElMessage.warning('部分统计暂时不可用')
