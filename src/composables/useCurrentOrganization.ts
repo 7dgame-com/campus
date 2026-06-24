@@ -1,4 +1,4 @@
-import { computed, readonly, ref } from 'vue'
+import { computed, readonly, ref, watch } from 'vue'
 import { listOrganizations, type OrganizationSummary } from '../api'
 import { normalizeList } from '../utils/apiData'
 import { useAuthSession } from './useAuthSession'
@@ -9,6 +9,7 @@ const loading = ref(false)
 const loaded = ref(false)
 const error = ref('')
 let loadPromise: Promise<void> | null = null
+let loadedOrganizationKey = ''
 
 function normalizeOrganizationKey(value: unknown): string {
   return typeof value === 'string' ? value.trim() : ''
@@ -26,7 +27,20 @@ export function useCurrentOrganization() {
   const organizationId = computed(() => organization.value?.id ?? null)
   const organizationTitle = computed(() => organization.value?.title ?? organizationName.value)
 
+  function resetOrganizationState(key: string) {
+    loadedOrganizationKey = key
+    organization.value = null
+    loaded.value = false
+    error.value = ''
+    loadPromise = null
+  }
+
   async function loadCurrentOrganization(force = false) {
+    const key = organizationName.value
+    if (key !== loadedOrganizationKey) {
+      resetOrganizationState(key)
+    }
+
     if (loaded.value && !force) return
     if (loadPromise && !force) {
       await loadPromise
@@ -38,7 +52,6 @@ export function useCurrentOrganization() {
       error.value = ''
 
       try {
-        const key = organizationName.value
         if (key === '') {
           organization.value = null
           loaded.value = true
@@ -75,6 +88,14 @@ export function useCurrentOrganization() {
 
     await loadPromise
   }
+
+  watch(organizationName, (key, previousKey) => {
+    if (key === previousKey) return
+    resetOrganizationState(key)
+    if (key) {
+      void loadCurrentOrganization(true)
+    }
+  })
 
   return {
     organization: readonly(organization),

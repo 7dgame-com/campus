@@ -201,7 +201,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox, type UploadFile } from 'element-plus'
 import { Brush, Key, Refresh, Upload } from '@element-plus/icons-vue'
 import {
@@ -259,6 +259,7 @@ const resourceStorageProgress = ref<{ label: string; progress: number } | null>(
 const resultDialogVisible = ref(false)
 const resultTitle = ref('')
 const operationResults = ref<CampusOperationResult[]>([])
+let mounted = false
 const resourceTypeOptions: Array<{ label: string; value: ResourceType }> = [
   { label: '3D 模型', value: 'polygen' },
   { label: '图片', value: 'picture' },
@@ -628,8 +629,14 @@ function requestErrorMessage(error: unknown): string {
   return err.response?.data?.message || err.response?.data?.error || err.message || '请求失败'
 }
 
+watch(organizationId, (id, previousId) => {
+  if (!mounted || !id || id === previousId) return
+  refreshFromFirstPage()
+})
+
 onMounted(async () => {
   await loadCurrentOrganization()
+  mounted = true
   await loadUsers()
 })
 </script>
