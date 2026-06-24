@@ -37,7 +37,7 @@ import { ref, computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { isInIframe, getToken, setToken, removeToken } from './utils/token'
 import { usePluginMessageBridge } from './composables/usePluginMessageBridge'
-import { clearHostPluginConfig, setHostPluginConfig } from './composables/useHostPluginContext'
+import { clearHostPluginConfig, setHostPluginConfig, useHostPluginContext } from './composables/useHostPluginContext'
 import { setThemeFromConfig } from './composables/useTheme'
 
 declare const __APP_VERSION__: string
@@ -46,13 +46,16 @@ const appVersion = `v${__APP_VERSION__}`
 const route = useRoute()
 const hasToken = ref(!!getToken())
 const inIframe = ref(isInIframe())
+const { configLoaded } = useHostPluginContext()
 
 // 公开路由不需要 token 认证
 const PUBLIC_ROUTES = ['/api-diagnostics']
 const isPublicRoute = computed(() => PUBLIC_ROUTES.some((p) => route.path.startsWith(p)))
 
-// 显示握手模态窗：非公开页面 且 (不在iframe 或 还没有token)
-const showHandshake = computed(() => !isPublicRoute.value && (!inIframe.value || !hasToken.value))
+// 显示握手状态：非公开页面必须在 iframe 内拿到当前 INIT token 和配置。
+const showHandshake = computed(() =>
+  !isPublicRoute.value && (!inIframe.value || !hasToken.value || !configLoaded.value)
+)
 
 usePluginMessageBridge({
   onInit: (payload) => {

@@ -7,6 +7,7 @@ const { fetchSession, hostContextState, sessionState } = vi.hoisted(() => ({
     hasExplicitGroup: { value: true },
     hasOrganizationGroup: { value: true },
     isPublicPluginGroup: { value: false },
+    currentOrganizationId: { value: null as number | null },
     currentOrganizationName: { value: 'school-first-lab' },
   },
   sessionState: {
@@ -47,6 +48,7 @@ describe('usePermissions', () => {
     hostContextState.hasExplicitGroup.value = true
     hostContextState.hasOrganizationGroup.value = true
     hostContextState.isPublicPluginGroup.value = false
+    hostContextState.currentOrganizationId.value = null
     hostContextState.currentOrganizationName.value = 'school-first-lab'
   })
 
@@ -71,6 +73,26 @@ describe('usePermissions', () => {
     expect(permissions.can('view-schools')).toBe(true)
     expect(permissions.can('manage-student-accounts')).toBe(true)
     expect(permissions.can('manage-global-tools')).toBe(false)
+  })
+
+  it('allows organization admins when the host organization id matches', async () => {
+    sessionState.loaded.value = true
+    sessionState.user.value = {
+      roles: ['user', 'admin'],
+      organizations: [{ id: 7, title: '第一实验学校', name: 'school-first-lab' }],
+    }
+    sessionState.isAuthenticated.value = true
+    hostContextState.currentOrganizationId.value = 7
+    hostContextState.currentOrganizationName.value = '第一实验学校'
+
+    const { usePermissions } = await loadComposable()
+    const permissions = usePermissions()
+
+    await permissions.fetchPermissions()
+
+    expect(permissions.belongsToCurrentOrganization.value).toBe(true)
+    expect(permissions.isCampusAdmin.value).toBe(true)
+    expect(permissions.hasAny()).toBe(true)
   })
 
   it('allows root global plugin management', async () => {
@@ -130,6 +152,46 @@ describe('usePermissions', () => {
     expect(permissions.belongsToCurrentOrganization.value).toBe(false)
     expect(permissions.isCampusAdmin.value).toBe(false)
     expect(permissions.hasCampusAccess.value).toBe(false)
+    expect(permissions.hasAny()).toBe(false)
+  })
+
+  it('does not treat organization titles as organization identity keys', async () => {
+    sessionState.loaded.value = true
+    sessionState.user.value = {
+      roles: ['admin'],
+      organizations: [{ id: 7, title: '第一实验学校', name: 'school-first-lab' }],
+    }
+    sessionState.isAuthenticated.value = true
+    hostContextState.currentOrganizationId.value = null
+    hostContextState.currentOrganizationName.value = '第一实验学校'
+
+    const { usePermissions } = await loadComposable()
+    const permissions = usePermissions()
+
+    await permissions.fetchPermissions()
+
+    expect(permissions.belongsToCurrentOrganization.value).toBe(false)
+    expect(permissions.isCampusAdmin.value).toBe(false)
+    expect(permissions.hasAny()).toBe(false)
+  })
+
+  it('keeps organization name matching strict when no organization id is available', async () => {
+    sessionState.loaded.value = true
+    sessionState.user.value = {
+      roles: ['admin'],
+      organizations: [{ id: 7, title: '第一实验学校', name: 'School-First-Lab' }],
+    }
+    sessionState.isAuthenticated.value = true
+    hostContextState.currentOrganizationId.value = null
+    hostContextState.currentOrganizationName.value = 'school-first-lab'
+
+    const { usePermissions } = await loadComposable()
+    const permissions = usePermissions()
+
+    await permissions.fetchPermissions()
+
+    expect(permissions.belongsToCurrentOrganization.value).toBe(false)
+    expect(permissions.isCampusAdmin.value).toBe(false)
     expect(permissions.hasAny()).toBe(false)
   })
 

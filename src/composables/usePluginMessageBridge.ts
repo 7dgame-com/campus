@@ -39,6 +39,7 @@ export interface UsePluginMessageBridgeReturn {
 
 type PluginReadyWindow = Window & typeof globalThis & {
   __PLUGIN_READY_SENT__?: boolean
+  __EARLY_INIT_PAYLOAD__?: Record<string, unknown> | null
 }
 
 // ── Helpers ─────────────────────────────────────────────────
@@ -47,6 +48,9 @@ type PluginReadyWindow = Window & typeof globalThis & {
 function genId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`
 }
+
+const READY_RETRY_INTERVAL_MS = 500
+const READY_RETRY_LIMIT = 10
 
 // ── Composable ──────────────────────────────────────────────
 
@@ -72,6 +76,7 @@ export function usePluginMessageBridge(
 
   /** The id of the last received REQUEST, used for RESPONSE pairing. */
   let lastRequestId: string | undefined
+  let readyRetryTimer: ReturnType<typeof window.setTimeout> | null = null
 
   // ── Outgoing ────────────────────────────────────────────
 
@@ -110,14 +115,52 @@ export function usePluginMessageBridge(
 
   // ── Built-in handlers ───────────────────────────────────
 
+  function clearReadyRetryTimer() {
+    if (readyRetryTimer === null) return
+    window.clearTimeout(readyRetryTimer)
+    readyRetryTimer = null
+  }
+
+  function sendPluginReady() {
+    const pluginWindow = window as PluginReadyWindow
+    pluginWindow.__PLUGIN_READY_SENT__ = true
+    postMessage('PLUGIN_READY')
+  }
+
+  function schedulePluginReady(attempt = 1) {
+    if (isReady.value || attempt > READY_RETRY_LIMIT) return
+
+    sendPluginReady()
+    clearReadyRetryTimer()
+    readyRetryTimer = window.setTimeout(() => {
+      schedulePluginReady(attempt + 1)
+    }, READY_RETRY_INTERVAL_MS)
+  }
+
+  function clearEarlyInitPayload() {
+    const pluginWindow = window as PluginReadyWindow
+    pluginWindow.__EARLY_INIT_PAYLOAD__ = null
+  }
+
   function handleInit(payload: Record<string, unknown>) {
     token.value = (payload.token as string) ?? null
     config.value = (payload.config as Record<string, unknown>) ?? {}
     isReady.value = true
+    clearReadyRetryTimer()
+    clearEarlyInitPayload()
     options?.onInit?.({
       token: token.value ?? '',
       config: config.value,
     })
+  }
+
+  function consumeEarlyInitPayload(): boolean {
+    const pluginWindow = window as PluginReadyWindow
+    const earlyPayload = pluginWindow.__EARLY_INIT_PAYLOAD__
+    if (!earlyPayload || typeof earlyPayload !== 'object') return false
+
+    handleInit(earlyPayload)
+    return true
   }
 
   function handleTokenUpdate(payload: Record<string, unknown>) {
@@ -175,13 +218,14 @@ export function usePluginMessageBridge(
   onMounted(() => {
     window.addEventListener('message', handleMessage)
     const pluginWindow = window as PluginReadyWindow
-    if (!pluginWindow.__PLUGIN_READY_SENT__) {
-      pluginWindow.__PLUGIN_READY_SENT__ = true
-      postMessage('PLUGIN_READY')
+    const hasEarlyInitPayload = consumeEarlyInitPayload()
+    if (!pluginWindow.__PLUGIN_READY_SENT__ && !hasEarlyInitPayload) {
+      schedulePluginReady()
     }
   })
 
   onBeforeUnmount(() => {
+    clearReadyRetryTimer()
     window.removeEventListener('message', handleMessage)
   })
 

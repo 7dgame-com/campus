@@ -201,7 +201,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox, type UploadFile } from 'element-plus'
 import { Brush, Key, Refresh, Upload } from '@element-plus/icons-vue'
 import {
@@ -225,8 +225,10 @@ const PASSWORD_POLICY_HINT = '密码要求：8-64 位，需包含大写字母、
 const { can } = usePermissions()
 const {
   organization,
+  organizationName,
   organizationId,
   organizationTitle,
+  error: organizationError,
   loadCurrentOrganization,
 } = useCurrentOrganization()
 
@@ -259,6 +261,7 @@ const resourceStorageProgress = ref<{ label: string; progress: number } | null>(
 const resultDialogVisible = ref(false)
 const resultTitle = ref('')
 const operationResults = ref<CampusOperationResult[]>([])
+let mounted = false
 const resourceTypeOptions: Array<{ label: string; value: ResourceType }> = [
   { label: '3D 模型', value: 'polygen' },
   { label: '图片', value: 'picture' },
@@ -320,7 +323,9 @@ function targetUserIds() {
 
 function requireOrganization() {
   if (!organizationId.value) {
-    ElMessage.warning('当前组织尚未加载完成')
+    const detail = organizationError.value
+      || (organizationName.value ? `组织标识：${organizationName.value}` : '缺少组织上下文')
+    ElMessage.warning(`当前组织尚未加载完成：${detail}`)
     return null
   }
   return organizationId.value
@@ -391,6 +396,18 @@ async function submitPassword() {
   if (!orgId) return
   if (!temporaryPassword.value) {
     ElMessage.warning('请输入临时密码')
+    return
+  }
+
+  const targetDescription = targetSummary.value.replace('目标账号：', '')
+
+  try {
+    await ElMessageBox.confirm(`确认将 ${targetDescription} 的密码修改为当前输入的临时密码？`, '二次确认', {
+      type: 'warning',
+      confirmButtonText: '确认修改',
+      cancelButtonText: '取消',
+    })
+  } catch {
     return
   }
 
@@ -628,8 +645,14 @@ function requestErrorMessage(error: unknown): string {
   return err.response?.data?.message || err.response?.data?.error || err.message || '请求失败'
 }
 
+watch(organizationId, (id, previousId) => {
+  if (!mounted || !id || id === previousId) return
+  refreshFromFirstPage()
+})
+
 onMounted(async () => {
   await loadCurrentOrganization()
+  mounted = true
   await loadUsers()
 })
 </script>

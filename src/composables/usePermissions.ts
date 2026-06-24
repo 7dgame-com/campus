@@ -41,17 +41,45 @@ function normalizeOrganizationKey(value: unknown): string {
   return typeof value === 'string' ? value.trim() : ''
 }
 
+function normalizeOrganizationId(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isInteger(value) && value > 0) {
+    return value
+  }
+
+  if (typeof value === 'string') {
+    const normalized = value.trim()
+    if (/^[1-9]\d*$/.test(normalized)) {
+      return Number(normalized)
+    }
+  }
+
+  return null
+}
+
 function belongsToOrganization(
   organizations: readonly CampusOrganization[],
+  organizationId: unknown,
   organizationName: string,
 ): boolean {
+  const normalizedOrganizationId = normalizeOrganizationId(organizationId)
+  const hasComparableOrganizationIds = organizations.some((organization) =>
+    normalizeOrganizationId(organization.id) !== null
+  )
+
+  if (normalizedOrganizationId !== null && hasComparableOrganizationIds) {
+    return organizations.some((organization) =>
+      normalizeOrganizationId(organization.id) === normalizedOrganizationId
+    )
+  }
+
   const normalizedOrganizationName = normalizeOrganizationKey(organizationName)
-  if (normalizedOrganizationName === '') return false
+  if (normalizedOrganizationName === '') {
+    return false
+  }
 
   return organizations.some((organization) => {
     const name = normalizeOrganizationKey(organization.name)
-    const title = normalizeOrganizationKey(organization.title)
-    return name === normalizedOrganizationName || title === normalizedOrganizationName
+    return name === normalizedOrganizationName
   })
 }
 
@@ -62,7 +90,9 @@ export function usePermissions() {
     hasExplicitGroup,
     hasOrganizationGroup,
     isPublicPluginGroup,
+    currentOrganizationId,
     currentOrganizationName,
+    currentOrganizationTitle,
   } = useHostPluginContext()
 
   const roles = computed(() => user.value?.roles ?? [])
@@ -82,7 +112,7 @@ export function usePermissions() {
     return isRoot.value || organizations.value.length > 0
   })
   const belongsToCurrentOrganization = computed(() =>
-    belongsToOrganization(organizations.value, currentOrganizationName.value)
+    belongsToOrganization(organizations.value, currentOrganizationId.value, currentOrganizationName.value)
   )
   const isCampusAdmin = computed(() => {
     if (!hasVerifiedSession.value || !hasOrganizationContext.value) return false
@@ -129,7 +159,9 @@ export function usePermissions() {
     isStudent,
     primaryRole,
     hasOrganizationContext,
+    currentOrganizationId,
     currentOrganizationName,
+    currentOrganizationTitle,
     belongsToCurrentOrganization,
     isCampusAdmin,
     isPublicPluginGroup,

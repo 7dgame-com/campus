@@ -3,6 +3,9 @@ import { computed, readonly, ref } from 'vue'
 type HostContextPayload = {
   pluginId?: unknown
   group?: unknown
+  organizationId?: unknown
+  organizationName?: unknown
+  organizationTitle?: unknown
 }
 
 const config = ref<Record<string, unknown>>({})
@@ -10,18 +13,40 @@ const configLoaded = ref(false)
 
 function readHostContext(value: Record<string, unknown>): HostContextPayload {
   const hostContext = value.hostContext
-  if (hostContext && typeof hostContext === 'object') {
-    return hostContext as HostContextPayload
-  }
+  const hostContextPayload = hostContext && typeof hostContext === 'object'
+    ? hostContext as HostContextPayload
+    : {}
 
   return {
-    pluginId: value.pluginId,
-    group: value.group,
+    pluginId: hostContextPayload.pluginId ?? value.pluginId,
+    group: hostContextPayload.group ?? value.group,
+    organizationId: hostContextPayload.organizationId ?? value.organizationId,
+    organizationName: hostContextPayload.organizationName ?? value.organizationName,
+    organizationTitle: hostContextPayload.organizationTitle ?? value.organizationTitle,
   }
 }
 
-function normalizeGroup(value: unknown): string {
+function normalizeString(value: unknown): string {
   return typeof value === 'string' ? value.trim() : ''
+}
+
+function normalizeGroup(value: unknown): string {
+  return normalizeString(value)
+}
+
+function normalizePositiveInteger(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isInteger(value) && value > 0) {
+    return value
+  }
+
+  if (typeof value === 'string') {
+    const normalized = value.trim()
+    if (/^[1-9]\d*$/.test(normalized)) {
+      return Number(normalized)
+    }
+  }
+
+  return null
 }
 
 function isOrganizationGroup(group: string): boolean {
@@ -44,12 +69,16 @@ export function clearHostPluginConfig() {
 
 export function useHostPluginContext() {
   const hostContext = computed(() => readHostContext(config.value))
-  const pluginId = computed(() => (typeof hostContext.value.pluginId === 'string' ? hostContext.value.pluginId : ''))
+  const pluginId = computed(() => normalizeString(hostContext.value.pluginId))
   const group = computed(() => normalizeGroup(hostContext.value.group))
   const hasExplicitGroup = computed(() => group.value.length > 0)
   const isPublicPluginGroup = computed(() => group.value === 'org:public')
   const hasOrganizationGroup = computed(() => isOrganizationGroup(group.value))
-  const currentOrganizationName = computed(() => organizationNameFromGroup(group.value))
+  const configuredOrganizationName = computed(() => normalizeString(hostContext.value.organizationName))
+  const groupOrganizationName = computed(() => organizationNameFromGroup(group.value))
+  const currentOrganizationName = computed(() => configuredOrganizationName.value || groupOrganizationName.value)
+  const currentOrganizationId = computed(() => normalizePositiveInteger(hostContext.value.organizationId))
+  const currentOrganizationTitle = computed(() => normalizeString(hostContext.value.organizationTitle))
 
   return {
     config: readonly(config),
@@ -60,5 +89,7 @@ export function useHostPluginContext() {
     isPublicPluginGroup,
     hasOrganizationGroup,
     currentOrganizationName,
+    currentOrganizationId,
+    currentOrganizationTitle,
   }
 }
