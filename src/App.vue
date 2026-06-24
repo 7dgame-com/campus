@@ -2,7 +2,7 @@
   <!-- 公开页面不需要 token -->
   <router-view v-if="isPublicRoute" />
   <template v-else>
-    <router-view v-if="hasToken" />
+    <router-view v-if="canRenderProtectedRoute" />
 
     <!-- 握手状态 -->
     <Transition name="handshake-fade">
@@ -51,10 +51,11 @@ const { configLoaded } = useHostPluginContext()
 // 公开路由不需要 token 认证
 const PUBLIC_ROUTES = ['/api-diagnostics']
 const isPublicRoute = computed(() => PUBLIC_ROUTES.some((p) => route.path.startsWith(p)))
+const canRenderProtectedRoute = computed(() => hasToken.value && configLoaded.value)
 
 // 显示握手状态：非公开页面必须在 iframe 内拿到当前 INIT token 和配置。
 const showHandshake = computed(() =>
-  !isPublicRoute.value && (!inIframe.value || !hasToken.value || !configLoaded.value)
+  !isPublicRoute.value && (!inIframe.value || !canRenderProtectedRoute.value)
 )
 
 usePluginMessageBridge({
