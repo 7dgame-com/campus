@@ -1,4 +1,4 @@
-import { computed, readonly, ref } from 'vue'
+import { computed, readonly, ref, watch } from 'vue'
 import { listOrganizations, type OrganizationSummary } from '../api'
 import { normalizeList } from '../utils/apiData'
 import { useAuthSession } from './useAuthSession'
@@ -9,24 +9,75 @@ const loading = ref(false)
 const loaded = ref(false)
 const error = ref('')
 let loadPromise: Promise<void> | null = null
+let loadedOrganizationKey = ''
 
 function normalizeOrganizationKey(value: unknown): string {
   return typeof value === 'string' ? value.trim() : ''
 }
 
 function matchesOrganization(organization: OrganizationSummary, key: string): boolean {
-  return organization.name === key || organization.title === key
+  const normalizedKey = normalizeOrganizationKey(key)
+  const normalizedName = normalizeOrganizationKey(organization.name)
+
+  return normalizedName.toLowerCase() === normalizedKey.toLowerCase()
+}
+
+function findOrganization(
+  organizations: OrganizationSummary[],
+  key: string,
+): OrganizationSummary | null {
+  return organizations.find((item) => matchesOrganization(item, key)) ?? null
+}
+
+async function fetchOrganizationByKey(key: string): Promise<OrganizationSummary | null> {
+  const { data } = await listOrganizations(key)
+  const organizations = normalizeList<OrganizationSummary>(data)
+  const matchedOrganization = findOrganization(organizations, key)
+  if (matchedOrganization) return matchedOrganization
+
+  const fallbackResponse = await listOrganizations()
+  return findOrganization(normalizeList<OrganizationSummary>(fallbackResponse.data), key)
 }
 
 export function useCurrentOrganization() {
   const { user } = useAuthSession()
-  const { currentOrganizationName } = usePermissions()
+  const {
+    currentOrganizationId,
+    currentOrganizationName,
+    currentOrganizationTitle,
+  } = usePermissions()
 
   const organizationName = computed(() => normalizeOrganizationKey(currentOrganizationName.value))
   const organizationId = computed(() => organization.value?.id ?? null)
   const organizationTitle = computed(() => organization.value?.title ?? organizationName.value)
 
+  const hostOrganization = computed<OrganizationSummary | null>(() => {
+    const id = currentOrganizationId.value
+    const key = organizationName.value
+    if (id === null || key === '') return null
+
+    const title = normalizeOrganizationKey(currentOrganizationTitle.value)
+    return {
+      id,
+      name: key,
+      title: title || key,
+    }
+  })
+
+  function resetOrganizationState(key: string) {
+    loadedOrganizationKey = key
+    organization.value = null
+    loaded.value = false
+    error.value = ''
+    loadPromise = null
+  }
+
   async function loadCurrentOrganization(force = false) {
+    const key = organizationName.value
+    if (key !== loadedOrganizationKey) {
+      resetOrganizationState(key)
+    }
+
     if (loaded.value && !force) return
     if (loadPromise && !force) {
       await loadPromise
@@ -38,11 +89,16 @@ export function useCurrentOrganization() {
       error.value = ''
 
       try {
-        const key = organizationName.value
         if (key === '') {
           organization.value = null
           loaded.value = true
           error.value = '当前插件没有组织上下文'
+          return
+        }
+
+        if (hostOrganization.value && matchesOrganization(hostOrganization.value, key)) {
+          organization.value = hostOrganization.value
+          loaded.value = true
           return
         }
 
@@ -55,9 +111,7 @@ export function useCurrentOrganization() {
           return
         }
 
-        const { data } = await listOrganizations(key)
-        const organizations = normalizeList<OrganizationSummary>(data)
-        organization.value = organizations.find((item) => matchesOrganization(item, key)) ?? null
+        organization.value = await fetchOrganizationByKey(key)
         loaded.value = true
 
         if (!organization.value) {
@@ -75,6 +129,23 @@ export function useCurrentOrganization() {
 
     await loadPromise
   }
+
+  const organizationContextSignature = computed(() =>
+    [
+      organizationName.value,
+      currentOrganizationId.value ?? '',
+      currentOrganizationTitle.value,
+    ].join(':')
+  )
+
+  watch(organizationContextSignature, (signature, previousSignature) => {
+    if (signature === previousSignature) return
+    const key = organizationName.value
+    resetOrganizationState(key)
+    if (key) {
+      void loadCurrentOrganization(true)
+    }
+  })
 
   return {
     organization: readonly(organization),

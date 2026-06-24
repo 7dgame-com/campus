@@ -60,7 +60,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { listCampusManagedUsers } from '../api'
 import { useCurrentOrganization } from '../composables/useCurrentOrganization'
@@ -74,6 +74,7 @@ const { organizationId, organizationTitle, loadCurrentOrganization } = useCurren
 
 const organizationValue = computed(() => organizationTitle.value || '-')
 const userCount = ref('-')
+let mounted = false
 
 const roleHint = computed(() => {
   switch (primaryRole.value) {
@@ -146,7 +147,15 @@ async function loadSummary() {
   }
 }
 
-onMounted(loadSummary)
+watch(organizationId, (id, previousId) => {
+  if (!mounted || !id || id === previousId) return
+  void loadSummary()
+})
+
+onMounted(async () => {
+  await loadSummary()
+  mounted = true
+})
 </script>
 
 <style scoped>
