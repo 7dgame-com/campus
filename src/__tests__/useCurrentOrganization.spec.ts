@@ -69,4 +69,34 @@ describe('useCurrentOrganization', () => {
     })
     expect(listOrganizations).toHaveBeenCalledWith('test')
   })
+
+  it('resolves legacy organization title groups by falling back to the full organization list', async () => {
+    listOrganizations
+      .mockResolvedValueOnce({
+        data: {
+          data: [],
+        },
+      })
+      .mockResolvedValueOnce({
+        data: {
+          data: [{ id: 1, title: '测试大学', name: 'test' }],
+        },
+      })
+
+    const { setHostPluginConfig, useCurrentOrganization } = await loadComposables()
+    setHostPluginConfig({
+      hostContext: {
+        pluginId: 'campus',
+        group: 'org:测试大学',
+      },
+    })
+
+    const currentOrganization = useCurrentOrganization()
+    await currentOrganization.loadCurrentOrganization()
+
+    expect(currentOrganization.organizationId.value).toBe(1)
+    expect(currentOrganization.organizationTitle.value).toBe('测试大学')
+    expect(listOrganizations).toHaveBeenNthCalledWith(1, '测试大学')
+    expect(listOrganizations).toHaveBeenNthCalledWith(2)
+  })
 })

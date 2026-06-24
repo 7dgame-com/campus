@@ -16,7 +16,30 @@ function normalizeOrganizationKey(value: unknown): string {
 }
 
 function matchesOrganization(organization: OrganizationSummary, key: string): boolean {
-  return organization.name === key || organization.title === key
+  const normalizedKey = normalizeOrganizationKey(key)
+  const normalizedName = normalizeOrganizationKey(organization.name)
+  const normalizedTitle = normalizeOrganizationKey(organization.title)
+  const lowerKey = normalizedKey.toLowerCase()
+
+  return normalizedName.toLowerCase() === lowerKey
+    || normalizedTitle.toLowerCase() === lowerKey
+}
+
+function findOrganization(
+  organizations: OrganizationSummary[],
+  key: string,
+): OrganizationSummary | null {
+  return organizations.find((item) => matchesOrganization(item, key)) ?? null
+}
+
+async function fetchOrganizationByKey(key: string): Promise<OrganizationSummary | null> {
+  const { data } = await listOrganizations(key)
+  const organizations = normalizeList<OrganizationSummary>(data)
+  const matchedOrganization = findOrganization(organizations, key)
+  if (matchedOrganization) return matchedOrganization
+
+  const fallbackResponse = await listOrganizations()
+  return findOrganization(normalizeList<OrganizationSummary>(fallbackResponse.data), key)
 }
 
 export function useCurrentOrganization() {
@@ -68,9 +91,7 @@ export function useCurrentOrganization() {
           return
         }
 
-        const { data } = await listOrganizations(key)
-        const organizations = normalizeList<OrganizationSummary>(data)
-        organization.value = organizations.find((item) => matchesOrganization(item, key)) ?? null
+        organization.value = await fetchOrganizationByKey(key)
         loaded.value = true
 
         if (!organization.value) {
