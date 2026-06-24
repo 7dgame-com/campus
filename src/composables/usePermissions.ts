@@ -61,7 +61,9 @@ export function usePermissions() {
     hasExplicitGroup,
     hasOrganizationGroup,
     isPublicPluginGroup,
+    currentOrganizationId,
     currentOrganizationName,
+    currentOrganizationTitle,
   } = useHostPluginContext()
 
   const roles = computed(() => user.value?.roles ?? [])
@@ -128,7 +130,9 @@ export function usePermissions() {
     isStudent,
     primaryRole,
     hasOrganizationContext,
+    currentOrganizationId,
     currentOrganizationName,
+    currentOrganizationTitle,
     belongsToCurrentOrganization,
     isCampusAdmin,
     isPublicPluginGroup,

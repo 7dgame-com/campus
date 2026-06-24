@@ -41,11 +41,28 @@ async function fetchOrganizationByKey(key: string): Promise<OrganizationSummary 
 
 export function useCurrentOrganization() {
   const { user } = useAuthSession()
-  const { currentOrganizationName } = usePermissions()
+  const {
+    currentOrganizationId,
+    currentOrganizationName,
+    currentOrganizationTitle,
+  } = usePermissions()
 
   const organizationName = computed(() => normalizeOrganizationKey(currentOrganizationName.value))
   const organizationId = computed(() => organization.value?.id ?? null)
   const organizationTitle = computed(() => organization.value?.title ?? organizationName.value)
+
+  const hostOrganization = computed<OrganizationSummary | null>(() => {
+    const id = currentOrganizationId.value
+    const key = organizationName.value
+    if (id === null || key === '') return null
+
+    const title = normalizeOrganizationKey(currentOrganizationTitle.value)
+    return {
+      id,
+      name: key,
+      title: title || key,
+    }
+  })
 
   function resetOrganizationState(key: string) {
     loadedOrganizationKey = key
@@ -79,6 +96,12 @@ export function useCurrentOrganization() {
           return
         }
 
+        if (hostOrganization.value && matchesOrganization(hostOrganization.value, key)) {
+          organization.value = hostOrganization.value
+          loaded.value = true
+          return
+        }
+
         const sessionOrganization = user.value?.organizations?.find((item) =>
           matchesOrganization(item, key)
         )
@@ -107,8 +130,17 @@ export function useCurrentOrganization() {
     await loadPromise
   }
 
-  watch(organizationName, (key, previousKey) => {
-    if (key === previousKey) return
+  const organizationContextSignature = computed(() =>
+    [
+      organizationName.value,
+      currentOrganizationId.value ?? '',
+      currentOrganizationTitle.value,
+    ].join(':')
+  )
+
+  watch(organizationContextSignature, (signature, previousSignature) => {
+    if (signature === previousSignature) return
+    const key = organizationName.value
     resetOrganizationState(key)
     if (key) {
       void loadCurrentOrganization(true)

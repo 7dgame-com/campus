@@ -70,6 +70,32 @@ describe('useCurrentOrganization', () => {
     expect(listOrganizations).toHaveBeenCalledWith('test')
   })
 
+  it('uses host organization metadata without requiring the organization list API', async () => {
+    const { setHostPluginConfig, useCurrentOrganization } = await loadComposables()
+    setHostPluginConfig({
+      organizationId: 1,
+      organizationName: 'test',
+      organizationTitle: '测试大学',
+      hostContext: {
+        pluginId: 'campus',
+        group: 'org:test',
+      },
+    })
+
+    const currentOrganization = useCurrentOrganization()
+    await currentOrganization.loadCurrentOrganization()
+
+    expect(currentOrganization.organization.value).toEqual({
+      id: 1,
+      name: 'test',
+      title: '测试大学',
+    })
+    expect(currentOrganization.organizationId.value).toBe(1)
+    expect(currentOrganization.organizationName.value).toBe('test')
+    expect(currentOrganization.organizationTitle.value).toBe('测试大学')
+    expect(listOrganizations).not.toHaveBeenCalled()
+  })
+
   it('does not resolve organization title groups as identity keys', async () => {
     listOrganizations
       .mockResolvedValueOnce({

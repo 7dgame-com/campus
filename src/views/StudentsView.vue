@@ -225,8 +225,10 @@ const PASSWORD_POLICY_HINT = '密码要求：8-64 位，需包含大写字母、
 const { can } = usePermissions()
 const {
   organization,
+  organizationName,
   organizationId,
   organizationTitle,
+  error: organizationError,
   loadCurrentOrganization,
 } = useCurrentOrganization()
 
@@ -321,7 +323,9 @@ function targetUserIds() {
 
 function requireOrganization() {
   if (!organizationId.value) {
-    ElMessage.warning('当前组织尚未加载完成')
+    const detail = organizationError.value
+      || (organizationName.value ? `组织标识：${organizationName.value}` : '缺少组织上下文')
+    ElMessage.warning(`当前组织尚未加载完成：${detail}`)
     return null
   }
   return organizationId.value
