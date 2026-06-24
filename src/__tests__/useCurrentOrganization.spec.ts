@@ -70,7 +70,7 @@ describe('useCurrentOrganization', () => {
     expect(listOrganizations).toHaveBeenCalledWith('test')
   })
 
-  it('resolves legacy organization title groups by falling back to the full organization list', async () => {
+  it('does not resolve organization title groups as identity keys', async () => {
     listOrganizations
       .mockResolvedValueOnce({
         data: {
@@ -94,7 +94,7 @@ describe('useCurrentOrganization', () => {
     const currentOrganization = useCurrentOrganization()
     await currentOrganization.loadCurrentOrganization()
 
-    expect(currentOrganization.organizationId.value).toBe(1)
+    expect(currentOrganization.organizationId.value).toBeNull()
     expect(currentOrganization.organizationTitle.value).toBe('测试大学')
     expect(listOrganizations).toHaveBeenNthCalledWith(1, '测试大学')
     expect(listOrganizations).toHaveBeenNthCalledWith(2)

@@ -18,11 +18,8 @@ function normalizeOrganizationKey(value: unknown): string {
 function matchesOrganization(organization: OrganizationSummary, key: string): boolean {
   const normalizedKey = normalizeOrganizationKey(key)
   const normalizedName = normalizeOrganizationKey(organization.name)
-  const normalizedTitle = normalizeOrganizationKey(organization.title)
-  const lowerKey = normalizedKey.toLowerCase()
 
-  return normalizedName.toLowerCase() === lowerKey
-    || normalizedTitle.toLowerCase() === lowerKey
+  return normalizedName.toLowerCase() === normalizedKey.toLowerCase()
 }
 
 function findOrganization(

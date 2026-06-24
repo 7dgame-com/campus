@@ -50,8 +50,7 @@ function belongsToOrganization(
 
   return organizations.some((organization) => {
     const name = normalizeOrganizationKey(organization.name)
-    const title = normalizeOrganizationKey(organization.title)
-    return name === normalizedOrganizationName || title === normalizedOrganizationName
+    return name === normalizedOrganizationName
   })
 }
 

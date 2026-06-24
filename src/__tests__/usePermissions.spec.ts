@@ -133,6 +133,25 @@ describe('usePermissions', () => {
     expect(permissions.hasAny()).toBe(false)
   })
 
+  it('does not treat organization titles as organization identity keys', async () => {
+    sessionState.loaded.value = true
+    sessionState.user.value = {
+      roles: ['admin'],
+      organizations: [{ id: 7, title: '第一实验学校', name: 'school-first-lab' }],
+    }
+    sessionState.isAuthenticated.value = true
+    hostContextState.currentOrganizationName.value = '第一实验学校'
+
+    const { usePermissions } = await loadComposable()
+    const permissions = usePermissions()
+
+    await permissions.fetchPermissions()
+
+    expect(permissions.belongsToCurrentOrganization.value).toBe(false)
+    expect(permissions.isCampusAdmin.value).toBe(false)
+    expect(permissions.hasAny()).toBe(false)
+  })
+
   it('denies student-only sessions from the campus plugin', async () => {
     sessionState.loaded.value = true
     sessionState.user.value = { roles: ['user'] }
