@@ -399,6 +399,18 @@ async function submitPassword() {
     return
   }
 
+  const targetDescription = targetSummary.value.replace('目标账号：', '')
+
+  try {
+    await ElMessageBox.confirm(`确认将 ${targetDescription} 的密码修改为当前输入的临时密码？`, '二次确认', {
+      type: 'warning',
+      confirmButtonText: '确认修改',
+      cancelButtonText: '取消',
+    })
+  } catch {
+    return
+  }
+
   passwordSubmitting.value = true
   try {
     const { data } = await updateCampusUserPassword({
