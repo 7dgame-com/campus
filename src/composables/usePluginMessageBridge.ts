@@ -39,6 +39,7 @@ export interface UsePluginMessageBridgeReturn {
 
 type PluginReadyWindow = Window & typeof globalThis & {
   __PLUGIN_READY_SENT__?: boolean
+  __EARLY_INIT_PAYLOAD__?: Record<string, unknown> | null
 }
 
 // ── Helpers ─────────────────────────────────────────────────
@@ -110,14 +111,29 @@ export function usePluginMessageBridge(
 
   // ── Built-in handlers ───────────────────────────────────
 
+  function clearEarlyInitPayload() {
+    const pluginWindow = window as PluginReadyWindow
+    pluginWindow.__EARLY_INIT_PAYLOAD__ = null
+  }
+
   function handleInit(payload: Record<string, unknown>) {
     token.value = (payload.token as string) ?? null
     config.value = (payload.config as Record<string, unknown>) ?? {}
     isReady.value = true
+    clearEarlyInitPayload()
     options?.onInit?.({
       token: token.value ?? '',
       config: config.value,
     })
+  }
+
+  function consumeEarlyInitPayload(): boolean {
+    const pluginWindow = window as PluginReadyWindow
+    const earlyPayload = pluginWindow.__EARLY_INIT_PAYLOAD__
+    if (!earlyPayload || typeof earlyPayload !== 'object') return false
+
+    handleInit(earlyPayload)
+    return true
   }
 
   function handleTokenUpdate(payload: Record<string, unknown>) {
@@ -175,7 +191,8 @@ export function usePluginMessageBridge(
   onMounted(() => {
     window.addEventListener('message', handleMessage)
     const pluginWindow = window as PluginReadyWindow
-    if (!pluginWindow.__PLUGIN_READY_SENT__) {
+    const hasEarlyInitPayload = consumeEarlyInitPayload()
+    if (!pluginWindow.__PLUGIN_READY_SENT__ && !hasEarlyInitPayload) {
       pluginWindow.__PLUGIN_READY_SENT__ = true
       postMessage('PLUGIN_READY')
     }
