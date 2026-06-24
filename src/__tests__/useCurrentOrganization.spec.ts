@@ -78,7 +78,7 @@ describe('useCurrentOrganization', () => {
       organizationTitle: '测试大学',
       hostContext: {
         pluginId: 'campus',
-        group: 'org:test',
+        group: 'org:测试大学',
       },
     })
 

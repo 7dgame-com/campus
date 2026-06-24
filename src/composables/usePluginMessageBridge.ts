@@ -49,6 +49,9 @@ function genId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`
 }
 
+const READY_RETRY_INTERVAL_MS = 500
+const READY_RETRY_LIMIT = 10
+
 // ── Composable ──────────────────────────────────────────────
 
 /**
@@ -73,6 +76,7 @@ export function usePluginMessageBridge(
 
   /** The id of the last received REQUEST, used for RESPONSE pairing. */
   let lastRequestId: string | undefined
+  let readyRetryTimer: ReturnType<typeof window.setTimeout> | null = null
 
   // ── Outgoing ────────────────────────────────────────────
 
@@ -111,6 +115,28 @@ export function usePluginMessageBridge(
 
   // ── Built-in handlers ───────────────────────────────────
 
+  function clearReadyRetryTimer() {
+    if (readyRetryTimer === null) return
+    window.clearTimeout(readyRetryTimer)
+    readyRetryTimer = null
+  }
+
+  function sendPluginReady() {
+    const pluginWindow = window as PluginReadyWindow
+    pluginWindow.__PLUGIN_READY_SENT__ = true
+    postMessage('PLUGIN_READY')
+  }
+
+  function schedulePluginReady(attempt = 1) {
+    if (isReady.value || attempt > READY_RETRY_LIMIT) return
+
+    sendPluginReady()
+    clearReadyRetryTimer()
+    readyRetryTimer = window.setTimeout(() => {
+      schedulePluginReady(attempt + 1)
+    }, READY_RETRY_INTERVAL_MS)
+  }
+
   function clearEarlyInitPayload() {
     const pluginWindow = window as PluginReadyWindow
     pluginWindow.__EARLY_INIT_PAYLOAD__ = null
@@ -120,6 +146,7 @@ export function usePluginMessageBridge(
     token.value = (payload.token as string) ?? null
     config.value = (payload.config as Record<string, unknown>) ?? {}
     isReady.value = true
+    clearReadyRetryTimer()
     clearEarlyInitPayload()
     options?.onInit?.({
       token: token.value ?? '',
@@ -193,12 +220,12 @@ export function usePluginMessageBridge(
     const pluginWindow = window as PluginReadyWindow
     const hasEarlyInitPayload = consumeEarlyInitPayload()
     if (!pluginWindow.__PLUGIN_READY_SENT__ && !hasEarlyInitPayload) {
-      pluginWindow.__PLUGIN_READY_SENT__ = true
-      postMessage('PLUGIN_READY')
+      schedulePluginReady()
     }
   })
 
   onBeforeUnmount(() => {
+    clearReadyRetryTimer()
     window.removeEventListener('message', handleMessage)
   })
 

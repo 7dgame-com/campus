@@ -76,7 +76,7 @@ export function useHostPluginContext() {
   const hasOrganizationGroup = computed(() => isOrganizationGroup(group.value))
   const configuredOrganizationName = computed(() => normalizeString(hostContext.value.organizationName))
   const groupOrganizationName = computed(() => organizationNameFromGroup(group.value))
-  const currentOrganizationName = computed(() => groupOrganizationName.value || configuredOrganizationName.value)
+  const currentOrganizationName = computed(() => configuredOrganizationName.value || groupOrganizationName.value)
   const currentOrganizationId = computed(() => normalizePositiveInteger(hostContext.value.organizationId))
   const currentOrganizationTitle = computed(() => normalizeString(hostContext.value.organizationTitle))
 

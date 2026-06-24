@@ -20,6 +20,7 @@ describe('usePluginMessageBridge', () => {
 
   afterEach(() => {
     vi.restoreAllMocks()
+    vi.useRealTimers()
     pluginWindow().__EARLY_INIT_PAYLOAD__ = null
     pluginWindow().__PLUGIN_READY_SENT__ = false
   })
@@ -69,5 +70,63 @@ describe('usePluginMessageBridge', () => {
       expect.objectContaining({ type: 'PLUGIN_READY' }),
       '*',
     )
+  })
+
+  it('retries PLUGIN_READY until INIT arrives', async () => {
+    vi.useFakeTimers()
+    const postMessageSpy = vi.spyOn(window.parent, 'postMessage')
+    const onInit = vi.fn()
+
+    mount(defineComponent({
+      setup() {
+        usePluginMessageBridge({ onInit })
+      },
+      template: '<div />',
+    }))
+
+    await nextTick()
+
+    const readyCount = () =>
+      postMessageSpy.mock.calls.filter(([message]) =>
+        typeof message === 'object'
+        && message !== null
+        && (message as { type?: unknown }).type === 'PLUGIN_READY'
+      ).length
+
+    expect(readyCount()).toBe(1)
+
+    vi.advanceTimersByTime(500)
+    expect(readyCount()).toBe(2)
+
+    window.dispatchEvent(new MessageEvent('message', {
+      source: window.parent,
+      data: {
+        type: 'INIT',
+        id: 'init-campus',
+        payload: {
+          token: 'jwt-token',
+          config: {
+            hostContext: {
+              pluginId: 'campus',
+              group: 'org:test',
+            },
+          },
+        },
+      },
+    }))
+    await nextTick()
+
+    expect(onInit).toHaveBeenCalledWith({
+      token: 'jwt-token',
+      config: {
+        hostContext: {
+          pluginId: 'campus',
+          group: 'org:test',
+        },
+      },
+    })
+
+    vi.advanceTimersByTime(5000)
+    expect(readyCount()).toBe(2)
   })
 })
