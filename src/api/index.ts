@@ -258,6 +258,7 @@ export interface CampusUploadedFilePayload {
   md5: string
   size: number
   mime_type?: string
+  image?: CampusUploadedFilePayload
 }
 
 export interface GroupItem {
@@ -377,6 +378,7 @@ export function uploadCampusResource(payload: {
     md5: payload.file.md5,
     size: payload.file.size,
     mime_type: payload.file.mime_type,
+    image: payload.file.image,
     name: payload.name?.trim() || undefined,
     type: payload.type,
     info: payload.info?.trim() || undefined,
