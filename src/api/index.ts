@@ -236,8 +236,17 @@ export interface CampusOperationResponse {
   data: {
     success_count: number
     failed_count: number
+    skipped_count?: number
+    skipped_targets?: CampusSkippedTarget[]
     results: CampusOperationResult[]
   }
+}
+
+export interface CampusSkippedTarget {
+  user_id: number
+  username: string
+  role?: string
+  reason?: string
 }
 
 export interface CampusClearPreview {
@@ -245,6 +254,8 @@ export interface CampusClearPreview {
   verse_count: number
   resource_count: number
   meta_count?: number
+  skipped_count?: number
+  skipped_targets?: CampusSkippedTarget[]
   targets: Array<{
     user_id: number
     username: string
@@ -322,6 +333,7 @@ export function updateCampusUserPassword(payload: {
   organization_id: number
   user_ids?: number[]
   password: string
+  operation_scope?: 'single' | 'batch'
 }) {
   return campusApi.post<CampusOperationResponse>('/users/password', payload)
 }
@@ -329,6 +341,7 @@ export function updateCampusUserPassword(payload: {
 export function previewCampusClearContent(payload: {
   organization_id: number
   user_ids?: number[]
+  operation_scope?: 'single' | 'batch'
 }) {
   return campusApi.post<{ code: number; message?: string; data: CampusClearPreview }>(
     '/users/clear-content-preview',
@@ -339,6 +352,7 @@ export function previewCampusClearContent(payload: {
 export function clearCampusContent(payload: {
   organization_id: number
   user_ids?: number[]
+  operation_scope?: 'single' | 'batch'
   confirm: true
 }) {
   return campusApi.post<CampusOperationResponse>('/users/clear-content', payload)
@@ -368,10 +382,12 @@ export function uploadCampusResource(payload: {
   name?: string
   type?: string
   info?: string
+  operation_scope?: 'single' | 'batch'
 }) {
   return campusApi.post<CampusOperationResponse>('/users/upload-resource', {
     organization_id: payload.organization_id,
     user_ids: payload.user_ids,
+    operation_scope: payload.operation_scope,
     filename: payload.file.filename,
     key: payload.file.key,
     url: payload.file.url,
