@@ -220,6 +220,7 @@ import { ensureMainUploadedFile, type MainUploadedFile } from '../services/mainF
 import { formatTimestamp, normalizeList, normalizeTotal } from '../utils/apiData'
 
 const ROLE_PRIORITY: Record<string, number> = { root: 4, admin: 3, manager: 2, user: 1 }
+const BATCH_PROTECTED_ROLES = ['root', 'admin', 'manager'] as const
 const RESOURCE_UPLOAD_MAX_BYTES = 200 * 1024 * 1024
 const ALL_MANAGED_USERS_PAGE_SIZE = 100
 const PASSWORD_POLICY_HINT = '密码要求：8-64 位，需包含大写字母、小写字母、数字、特殊字符中的至少 3 类，且不能包含用户名或邮箱信息。'
@@ -287,8 +288,12 @@ const resourceTypeLabel = computed(() =>
 
 const targetSummary = computed(() => {
   if (activeUser.value) return `目标账号：${activeUser.value.username}`
-  if (selectedUsers.value.length) return `目标账号：已选 ${selectedUsers.value.length} 个账号`
-  return '目标账号：当前组织全部可管理账号'
+  if (selectedUsers.value.length) {
+    const { allowed, skipped } = splitBatchTargets(selectedUsers.value)
+    if (skipped.length) return `目标账号：已选 ${selectedUsers.value.length} 个账号，将处理 ${allowed.length} 个普通用户，跳过 ${skipped.length} 个管理员账号`
+    return `目标账号：已选 ${selectedUsers.value.length} 个账号`
+  }
+  return '目标账号：当前组织全部普通用户（统一操作跳过 root/admin/manager）'
 })
 
 function highestRole(roles?: string[]) {
@@ -316,9 +321,63 @@ function roleTagType(role: string) {
   return 'info'
 }
 
+function operationScope(): 'single' | 'batch' {
+  return activeUser.value ? 'single' : 'batch'
+}
+
+function hasProtectedBatchRole(user: CampusManagedUser) {
+  return (user.roles ?? []).some((role) => BATCH_PROTECTED_ROLES.includes(role as (typeof BATCH_PROTECTED_ROLES)[number]))
+}
+
+function splitBatchTargets(targets: CampusManagedUser[]) {
+  const allowed: CampusManagedUser[] = []
+  const skipped: CampusManagedUser[] = []
+
+  for (const user of targets) {
+    if (hasProtectedBatchRole(user)) {
+      skipped.push(user)
+    } else {
+      allowed.push(user)
+    }
+  }
+
+  return { allowed, skipped }
+}
+
+function selectedBatchSkippedTargets() {
+  if (activeUser.value || !selectedUsers.value.length) return []
+  return splitBatchTargets(selectedUsers.value).skipped
+}
+
+function batchProtectionNote(skippedTargets = selectedBatchSkippedTargets()) {
+  if (activeUser.value) return ''
+  if (selectedUsers.value.length && skippedTargets.length) {
+    return `统一操作会跳过 ${skippedTargets.length} 个 root/admin/manager 账号。`
+  }
+  return '统一操作只处理普通用户，会跳过 root/admin/manager 账号。'
+}
+
+function warnSkippedBatchTargets(skippedTargets: CampusManagedUser[]) {
+  if (!skippedTargets.length) return
+  ElMessage.warning(`统一操作已跳过 ${skippedTargets.length} 个 root/admin/manager 账号`)
+}
+
+function ensureBatchSelectionCanOperate(actionLabel: string) {
+  if (activeUser.value || !selectedUsers.value.length) return true
+
+  const { allowed, skipped } = splitBatchTargets(selectedUsers.value)
+  if (!allowed.length) {
+    ElMessage.warning(`已选账号均为 root/admin/manager，无法统一${actionLabel}`)
+    return false
+  }
+
+  warnSkippedBatchTargets(skipped)
+  return true
+}
+
 function targetUserIds() {
   if (activeUser.value) return [activeUser.value.id]
-  if (selectedUsers.value.length) return selectedUsers.value.map((user) => user.id)
+  if (selectedUsers.value.length) return splitBatchTargets(selectedUsers.value).allowed.map((user) => user.id)
   return undefined
 }
 
@@ -338,8 +397,8 @@ function organizationLabel(row: CampusManagedUser) {
   return rowOrganization?.title ?? organization.value?.title ?? organizationTitle.value
 }
 
-function showResults(title: string, results: CampusOperationResult[], successCount: number, failedCount: number) {
-  resultTitle.value = `${title}：成功 ${successCount}，失败 ${failedCount}`
+function showResults(title: string, results: CampusOperationResult[], successCount: number, failedCount: number, skippedCount = 0) {
+  resultTitle.value = `${title}：成功 ${successCount}，失败 ${failedCount}${skippedCount ? `，跳过 ${skippedCount}` : ''}`
   operationResults.value = results
   resultDialogVisible.value = true
 }
@@ -414,6 +473,10 @@ async function loadAllManageableUsers(orgId: number): Promise<CampusManagedUser[
 function openPasswordDialog(user?: CampusManagedUser) {
   if (!requireOrganization()) return
   activeUser.value = user ?? null
+  if (!ensureBatchSelectionCanOperate('改密码')) {
+    activeUser.value = null
+    return
+  }
   temporaryPassword.value = ''
   passwordDialogVisible.value = true
 }
@@ -427,9 +490,11 @@ async function submitPassword() {
   }
 
   const targetDescription = targetSummary.value.replace('目标账号：', '')
+  const skippedCount = selectedBatchSkippedTargets().length
+  const note = batchProtectionNote()
 
   try {
-    await ElMessageBox.confirm(`确认将 ${targetDescription} 的密码修改为当前输入的临时密码？`, '二次确认', {
+    await ElMessageBox.confirm(`确认将 ${targetDescription} 的密码修改为当前输入的临时密码？${note ? `\n${note}` : ''}`, '二次确认', {
       type: 'warning',
       confirmButtonText: '确认修改',
       cancelButtonText: '取消',
@@ -444,9 +509,10 @@ async function submitPassword() {
       organization_id: orgId,
       user_ids: targetUserIds(),
       password: temporaryPassword.value,
+      operation_scope: operationScope(),
     })
     passwordDialogVisible.value = false
-    showResults('修改密码', data.data.results, data.data.success_count, data.data.failed_count)
+    showResults('修改密码', data.data.results, data.data.success_count, data.data.failed_count, data.data.skipped_count ?? skippedCount)
   } catch {
     ElMessage.error('密码修改失败')
   } finally {
@@ -457,6 +523,10 @@ async function submitPassword() {
 async function openClearDialog(user?: CampusManagedUser) {
   if (!requireOrganization()) return
   activeUser.value = user ?? null
+  if (!ensureBatchSelectionCanOperate('清空')) {
+    activeUser.value = null
+    return
+  }
   clearPreview.value = null
   clearDialogVisible.value = true
   await loadClearPreview()
@@ -471,6 +541,7 @@ async function loadClearPreview() {
     const { data } = await previewCampusClearContent({
       organization_id: orgId,
       user_ids: targetUserIds(),
+      operation_scope: operationScope(),
     })
     clearPreview.value = data.data
   } catch {
@@ -484,9 +555,11 @@ async function loadClearPreview() {
 async function submitClearContent() {
   const orgId = requireOrganization()
   if (!orgId || !clearPreview.value) return
+  const skippedCount = selectedBatchSkippedTargets().length || clearPreview.value.skipped_count || 0
+  const note = batchProtectionNote()
 
   try {
-    await ElMessageBox.confirm('确认清空目标账号的资源和场景？此操作不可撤销。', '二次确认', {
+    await ElMessageBox.confirm(`确认清空目标账号的资源和场景？此操作不可撤销。${note ? `\n${note}` : ''}`, '二次确认', {
       type: 'warning',
       confirmButtonText: '确认清空',
       cancelButtonText: '取消',
@@ -500,10 +573,11 @@ async function submitClearContent() {
     const { data } = await clearCampusContent({
       organization_id: orgId,
       user_ids: targetUserIds(),
+      operation_scope: operationScope(),
       confirm: true,
     })
     clearDialogVisible.value = false
-    showResults('清空资源和场景', data.data.results, data.data.success_count, data.data.failed_count)
+    showResults('清空资源和场景', data.data.results, data.data.success_count, data.data.failed_count, data.data.skipped_count ?? skippedCount)
     await loadUsers()
   } catch {
     ElMessage.error('清空资源和场景失败')
@@ -515,6 +589,10 @@ async function submitClearContent() {
 function openResourceDialog(user?: CampusManagedUser) {
   if (!requireOrganization()) return
   activeUser.value = user ?? null
+  if (!ensureBatchSelectionCanOperate('上传资源')) {
+    activeUser.value = null
+    return
+  }
   resourceFile.value = null
   resourceName.value = ''
   resourceType.value = ''
@@ -561,6 +639,24 @@ async function submitUploadResource() {
 
   resourceSubmitting.value = true
   try {
+    let batchTargets: CampusManagedUser[] = []
+    let skippedCount = selectedBatchSkippedTargets().length
+
+    if (!activeUser.value) {
+      const sourceTargets = selectedUsers.value.length
+        ? selectedUsers.value.slice()
+        : await loadAllManageableUsers(orgId)
+      const { allowed, skipped } = splitBatchTargets(sourceTargets)
+      skippedCount = skipped.length
+      warnSkippedBatchTargets(skipped)
+
+      if (!allowed.length) {
+        ElMessage.warning('没有可统一上传资源的普通用户')
+        return
+      }
+      batchTargets = allowed
+    }
+
     const uploadedFile = await ensureMainUploadedFile(resourceFile.value, {
       directory: resourceStorageDirectory(resourceType.value),
       onHashProgress: (progress) => {
@@ -580,22 +676,13 @@ async function submitUploadResource() {
       type: resourceType.value,
       info: resourcePayloadInfo(uploadedFile),
     }
-    const targets = activeUser.value
-      ? []
-      : selectedUsers.value.length
-        ? selectedUsers.value.slice()
-        : await loadAllManageableUsers(orgId)
 
     if (!activeUser.value) {
-      if (!targets.length) {
-        ElMessage.warning('当前组织没有可上传的目标账号')
-        return
-      }
-      const results = await uploadResourceForSelectedUsersSequentially(resourcePayload, targets)
+      const results = await uploadResourceForSelectedUsersSequentially(resourcePayload, batchTargets)
       const successCount = results.filter((result) => result.success).length
       const failedCount = results.length - successCount
       resourceDialogVisible.value = false
-      showResults('上传资源', results, successCount, failedCount)
+      showResults('上传资源', results, successCount, failedCount, skippedCount)
       await loadUsers()
       return
     }
@@ -603,9 +690,10 @@ async function submitUploadResource() {
     const { data } = await uploadCampusResource({
       ...resourcePayload,
       user_ids: targetUserIds(),
+      operation_scope: operationScope(),
     })
     resourceDialogVisible.value = false
-    showResults('上传资源', data.data.results, data.data.success_count, data.data.failed_count)
+    showResults('上传资源', data.data.results, data.data.success_count, data.data.failed_count, data.data.skipped_count ?? 0)
     await loadUsers()
   } catch (error) {
     ElMessage.error(`上传资源失败：${requestErrorMessage(error)}`)
@@ -639,6 +727,7 @@ async function uploadResourceForSelectedUsersSequentially(
       const { data } = await uploadCampusResource({
         ...payload,
         user_ids: [user.id],
+        operation_scope: 'batch',
       })
       results.push(...data.data.results)
     } catch (error) {
