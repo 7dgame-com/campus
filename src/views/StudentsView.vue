@@ -221,6 +221,7 @@ import { formatTimestamp, normalizeList, normalizeTotal } from '../utils/apiData
 
 const ROLE_PRIORITY: Record<string, number> = { root: 4, admin: 3, manager: 2, user: 1 }
 const RESOURCE_UPLOAD_MAX_BYTES = 200 * 1024 * 1024
+const ALL_MANAGED_USERS_PAGE_SIZE = 100
 const PASSWORD_POLICY_HINT = '密码要求：8-64 位，需包含大写字母、小写字母、数字、特殊字符中的至少 3 类，且不能包含用户名或邮箱信息。'
 const { can } = usePermissions()
 const {
@@ -382,6 +383,32 @@ async function loadUsers() {
   } finally {
     loading.value = false
   }
+}
+
+async function loadAllManageableUsers(orgId: number): Promise<CampusManagedUser[]> {
+  const allUsers: CampusManagedUser[] = []
+  let nextPage = 1
+  let expectedTotal = Number.POSITIVE_INFINITY
+
+  while (allUsers.length < expectedTotal) {
+    const { data } = await listCampusManagedUsers({
+      page: nextPage,
+      pageSize: ALL_MANAGED_USERS_PAGE_SIZE,
+      organization_id: orgId,
+    })
+    const pageUsers = normalizeList<CampusManagedUser>(data)
+    const totalUsers = normalizeTotal<CampusManagedUser>(data)
+
+    if (Number.isFinite(totalUsers) && totalUsers >= 0) {
+      expectedTotal = totalUsers
+    }
+    if (!pageUsers.length) break
+
+    allUsers.push(...pageUsers)
+    nextPage += 1
+  }
+
+  return allUsers
 }
 
 function openPasswordDialog(user?: CampusManagedUser) {
@@ -550,9 +577,17 @@ async function submitUploadResource() {
       type: resourceType.value,
       info: resourceInfo.value,
     }
-    const targets = activeUser.value ? [] : selectedUsers.value.slice()
+    const targets = activeUser.value
+      ? []
+      : selectedUsers.value.length
+        ? selectedUsers.value.slice()
+        : await loadAllManageableUsers(orgId)
 
-    if (targets.length > 1) {
+    if (!activeUser.value) {
+      if (!targets.length) {
+        ElMessage.warning('当前组织没有可上传的目标账号')
+        return
+      }
       const results = await uploadResourceForSelectedUsersSequentially(resourcePayload, targets)
       const successCount = results.filter((result) => result.success).length
       const failedCount = results.length - successCount
@@ -569,8 +604,8 @@ async function submitUploadResource() {
     resourceDialogVisible.value = false
     showResults('上传资源', data.data.results, data.data.success_count, data.data.failed_count)
     await loadUsers()
-  } catch {
-    ElMessage.error('上传资源失败')
+  } catch (error) {
+    ElMessage.error(`上传资源失败：${requestErrorMessage(error)}`)
   } finally {
     resourceSubmitting.value = false
     resourceBatchProgress.value = null
