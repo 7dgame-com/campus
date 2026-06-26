@@ -569,13 +569,16 @@ async function submitUploadResource() {
       onUploadProgress: (progress) => {
         resourceStorageProgress.value = { label: '确认资源文件', progress }
       },
+      onMetadataProgress: (label) => {
+        resourceStorageProgress.value = { label, progress: 1 }
+      },
     })
     const resourcePayload = {
       organization_id: orgId,
       file: uploadedFile,
       name: resourceName.value || stripFileExtension(resourceFile.value.name),
       type: resourceType.value,
-      info: resourceInfo.value,
+      info: resourcePayloadInfo(uploadedFile),
     }
     const targets = activeUser.value
       ? []
@@ -619,7 +622,7 @@ async function uploadResourceForSelectedUsersSequentially(
     file: MainUploadedFile
     name: string
     type: ResourceType
-    info: string
+    info?: string
   },
   targets: CampusManagedUser[],
 ): Promise<CampusOperationResult[]> {
@@ -670,6 +673,10 @@ function inferResourceType(file: File): ResourceType | '' {
 
 function resourceStorageDirectory(type: ResourceType): string {
   return type
+}
+
+function resourcePayloadInfo(uploadedFile: MainUploadedFile): string | undefined {
+  return uploadedFile.info || resourceInfo.value.trim() || undefined
 }
 
 function requestErrorMessage(error: unknown): string {
