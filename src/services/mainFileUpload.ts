@@ -1,24 +1,19 @@
-import axios from 'axios'
 import COS from 'cos-js-sdk-v5'
 import SparkMD5 from 'spark-md5'
 import { mainApi } from '../api'
 import { processModel } from '../utils/modelProcessor'
 
 type ProgressCallback = (progress: number) => void
-type StorageDriver = 'cos' | 'local'
 
 const STORAGE_BUCKET = 'store'
-const UPLOAD_BLOCK_SIZE = 1024 * 1024
 const MD5_CHUNK_SIZE = 2 * 1024 * 1024
 
 interface StorageBucketConfig {
   bucket?: string
   region?: string
-  baseUrl?: string
 }
 
 interface TencentCloudConfig {
-  driver?: string
   public?: StorageBucketConfig
 }
 
@@ -33,11 +28,9 @@ interface TencentCloudTokenResponse {
 }
 
 interface FileHandler {
-  driver: StorageDriver
   bucket: string
-  region?: string
-  baseUrl?: string
-  cos?: COS
+  region: string
+  cos: COS
 }
 
 export interface MainUploadedFile {
@@ -182,16 +175,6 @@ async function publicHandler(): Promise<FileHandler> {
   const { data } = await mainApi.get<TencentCloudConfig>('/tencent-clouds/cloud')
   const publicConfig = data.public ?? {}
   const bucket = publicConfig.bucket || STORAGE_BUCKET
-  const driver = data.driver?.toLowerCase() === 'local' ? 'local' : 'cos'
-
-  if (driver === 'local') {
-    return {
-      driver,
-      bucket,
-      baseUrl: publicConfig.baseUrl || '/storage',
-    }
-  }
-
   const region = publicConfig.region || 'ap-nanjing'
   const cos = new COS({
     getAuthorization: async (_options, callback) => {
@@ -214,7 +197,6 @@ async function publicHandler(): Promise<FileHandler> {
   })
 
   return {
-    driver,
     bucket,
     region,
     cos,
@@ -222,16 +204,6 @@ async function publicHandler(): Promise<FileHandler> {
 }
 
 async function fileHas(md5: string, extension: string, handler: FileHandler, dir = ''): Promise<boolean> {
-  if (handler.driver === 'local') {
-    try {
-      await axios.head(localStorageRequestUrl(handler, objectKey(dir, md5, extension)))
-      return true
-    } catch {
-      return false
-    }
-  }
-
-  if (!handler.cos || !handler.region) return false
   try {
     await handler.cos.headObject({
       Bucket: handler.bucket,
@@ -252,15 +224,6 @@ async function fileUpload(
   handler: FileHandler,
   dir = '',
 ): Promise<void> {
-  if (handler.driver === 'local') {
-    await localFileUpload(md5, extension, file, dir, progress)
-    return
-  }
-
-  if (!handler.cos || !handler.region) {
-    throw new Error('COS instance not available')
-  }
-
   await handler.cos.uploadFile({
     Bucket: handler.bucket,
     Region: handler.region,
@@ -272,45 +235,7 @@ async function fileUpload(
   })
 }
 
-async function localFileUpload(
-  md5: string,
-  extension: string,
-  file: File,
-  directory: string,
-  progress: ProgressCallback,
-  skip = 0,
-): Promise<void> {
-  const nextSize = Math.min((skip + 1) * UPLOAD_BLOCK_SIZE, file.size)
-  const formData = new FormData()
-  formData.append('file', file.slice(skip * UPLOAD_BLOCK_SIZE, nextSize))
-  formData.append('filename', `${md5}${extension}`)
-  formData.append('md5', md5)
-  formData.append('skip', String(skip))
-  formData.append('block_size', String(UPLOAD_BLOCK_SIZE))
-  formData.append('upload_size', String(nextSize))
-  formData.append('size', String(file.size))
-  formData.append('directory', directory)
-  formData.append('bucket', STORAGE_BUCKET)
-
-  await mainApi.post('/upload/file', formData, {
-    headers: { 'Content-Type': 'multipart/form-data' },
-  })
-
-  if (file.size <= nextSize) {
-    progress(1)
-    return
-  }
-
-  progress(nextSize / file.size)
-  await localFileUpload(md5, extension, file, directory, progress, skip + 1)
-}
-
 function fileUrl(md5: string, extension: string, handler: FileHandler, dir = ''): string {
-  if (handler.driver === 'local') {
-    return localStorageRecordUrl(handler, objectKey(dir, md5, extension))
-  }
-
-  if (!handler.cos || !handler.region) return ''
   return handler.cos.getObjectUrl(
     {
       Bucket: handler.bucket,
@@ -326,23 +251,6 @@ function fileUrl(md5: string, extension: string, handler: FileHandler, dir = '')
 function objectKey(dir: string, md5: string, extension: string): string {
   const ext = extension.startsWith('.') ? extension : `.${extension}`
   return [dir, md5 + ext].filter(Boolean).join('/').replace(/\/+/g, '/')
-}
-
-function localStorageRequestUrl(handler: FileHandler, key: string): string {
-  return `/api/storage/${encodePathPart(handler.bucket)}/${encodeKey(key)}`
-}
-
-function localStorageRecordUrl(handler: FileHandler, key: string): string {
-  const baseUrl = handler.baseUrl || '/storage'
-  return `${baseUrl.replace(/\/+$/, '')}/${encodePathPart(handler.bucket)}/${encodeKey(key)}`
-}
-
-function encodeKey(key: string): string {
-  return key.split('/').map(encodePathPart).join('/')
-}
-
-function encodePathPart(value: string): string {
-  return encodeURIComponent(value)
 }
 
 function getImageSize(file: File): Promise<{ x: number; y: number }> {
