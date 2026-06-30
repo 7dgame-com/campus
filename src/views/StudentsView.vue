@@ -306,7 +306,7 @@ const resourceTypeOptions: Array<{ label: string; value: ResourceType }> = [
   { label: '其他文件', value: 'file' },
 ]
 const resourceExtensionsByType: Record<ResourceType, string[]> = {
-  polygen: ['glb', 'gltf', 'fbx', 'obj', 'stl'],
+  polygen: ['glb'],
   voxel: ['vox'],
   picture: ['jpg', 'jpeg', 'png', 'gif', 'webp'],
   video: ['mp4', 'webm', 'mov'],
