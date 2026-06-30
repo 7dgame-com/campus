@@ -144,6 +144,13 @@
           :closable="false"
           show-icon
         />
+        <el-alert
+          v-if="resourceFileProgress"
+          :title="`正在上传第 ${resourceFileProgress.current}/${resourceFileProgress.total} 个资源：${resourceFileProgress.filename}`"
+          type="success"
+          :closable="false"
+          show-icon
+        />
         <div v-if="resourceStorageProgress" class="resource-progress">
           <span>{{ resourceStorageProgress.label }}</span>
           <el-progress :percentage="Math.round(resourceStorageProgress.progress * 100)" />
@@ -151,10 +158,11 @@
         <el-form label-position="top">
           <el-form-item label="资源文件">
             <el-upload
+              v-model:file-list="resourceUploadFileList"
               drag
+              multiple
               :accept="resourceAccept"
               :auto-upload="false"
-              :limit="1"
               :on-change="handleResourceFileChange"
               :on-remove="handleResourceFileRemove"
             >
@@ -163,11 +171,23 @@
             </el-upload>
           </el-form-item>
           <el-form-item label="资源名称">
-            <el-input v-model="resourceName" placeholder="默认使用文件名" />
+            <el-input
+              v-model="resourceName"
+              :disabled="resourceUploadItems.length > 1"
+              :placeholder="resourceUploadItems.length > 1 ? '多文件上传时默认使用各自文件名' : '默认使用文件名'"
+            />
           </el-form-item>
           <el-form-item label="资源类型">
             <div class="detected-resource-type">
-              <el-tag v-if="resourceType" type="info">{{ resourceTypeLabel }}</el-tag>
+              <template v-if="resourceUploadItems.length === 1">
+                <el-tag type="info">{{ resourceTypeLabel(resourceUploadItems[0].type) }}</el-tag>
+              </template>
+              <template v-else-if="resourceUploadItems.length > 1">
+                <span>已选择 {{ resourceUploadItems.length }} 个文件</span>
+                <el-tag v-for="summary in resourceTypeSummary" :key="summary.type" type="info">
+                  {{ summary.label }} {{ summary.count }}
+                </el-tag>
+              </template>
               <span v-else>选择文件后自动识别</span>
             </div>
           </el-form-item>
@@ -178,8 +198,8 @@
       </div>
       <template #footer>
         <el-button :disabled="resourceSubmitting" @click="resourceDialogVisible = false">取消</el-button>
-        <el-button type="primary" :loading="resourceSubmitting" :disabled="!resourceFile || !resourceType" @click="submitUploadResource">
-          {{ resourceBatchProgress ? `上传中 ${resourceBatchProgress.current}/${resourceBatchProgress.total}` : '确认上传' }}
+        <el-button type="primary" :loading="resourceSubmitting" :disabled="!resourceUploadItems.length" @click="submitUploadResource">
+          {{ resourceSubmitButtonLabel }}
         </el-button>
       </template>
     </el-dialog>
@@ -202,7 +222,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
-import { ElMessage, ElMessageBox, type UploadFile } from 'element-plus'
+import { ElMessage, ElMessageBox, type UploadFile, type UploadFiles, type UploadUserFile } from 'element-plus'
 import { Brush, Key, Refresh, Upload } from '@element-plus/icons-vue'
 import {
   clearCampusContent,
@@ -251,14 +271,26 @@ const clearPreview = ref<CampusClearPreview | null>(null)
 const clearPreviewLoading = ref(false)
 const clearSubmitting = ref(false)
 const resourceDialogVisible = ref(false)
-const resourceFile = ref<File | null>(null)
-const resourceName = ref('')
-type ResourceType = 'polygen' | 'picture' | 'video' | 'audio' | 'file'
+const resourceUploadFileList = ref<UploadUserFile[]>([])
+type ResourceType = 'polygen' | 'voxel' | 'picture' | 'video' | 'audio' | 'particle' | 'file'
+interface ResourceUploadItem {
+  file: File
+  type: ResourceType
+}
+interface ResourceUploadPayload {
+  organization_id: number
+  file: MainUploadedFile
+  name: string
+  type: ResourceType
+  info?: string
+}
 
-const resourceType = ref<ResourceType | ''>('')
+const resourceUploadItems = ref<ResourceUploadItem[]>([])
+const resourceName = ref('')
 const resourceInfo = ref('')
 const resourceSubmitting = ref(false)
 const resourceBatchProgress = ref<{ current: number; total: number; username: string } | null>(null)
+const resourceFileProgress = ref<{ current: number; total: number; filename: string } | null>(null)
 const resourceStorageProgress = ref<{ label: string; progress: number } | null>(null)
 const resultDialogVisible = ref(false)
 const resultTitle = ref('')
@@ -266,25 +298,48 @@ const operationResults = ref<CampusOperationResult[]>([])
 let mounted = false
 const resourceTypeOptions: Array<{ label: string; value: ResourceType }> = [
   { label: '3D 模型', value: 'polygen' },
+  { label: '体素模型', value: 'voxel' },
   { label: '图片', value: 'picture' },
   { label: '视频', value: 'video' },
   { label: '音频', value: 'audio' },
+  { label: '粒子', value: 'particle' },
   { label: '其他文件', value: 'file' },
 ]
-const resourceAcceptByType: Record<ResourceType, string> = {
-  polygen: '.glb,.gltf,.fbx,.obj,.stl',
-  picture: '.jpg,.jpeg,.png,.gif,.webp',
-  video: '.mp4,.webm,.mov',
-  audio: '.mp3,.wav,.ogg,.m4a',
-  file: '.pdf,.zip,.rar,.7z',
+const resourceExtensionsByType: Record<ResourceType, string[]> = {
+  polygen: ['glb', 'gltf', 'fbx', 'obj', 'stl'],
+  voxel: ['vox'],
+  picture: ['jpg', 'jpeg', 'png', 'gif', 'webp'],
+  video: ['mp4', 'webm', 'mov'],
+  audio: ['mp3', 'wav', 'ogg', 'm4a'],
+  particle: ['json'],
+  file: ['pdf', 'doc', 'docx', 'ppt', 'pptx', 'xls', 'xlsx', 'txt', 'md', 'csv', 'zip', 'rar', '7z'],
 }
+const allowedResourceExtensions = new Set(Object.values(resourceExtensionsByType).flat())
 
 const canManageAccounts = computed(() => can('manage-student-accounts'))
 const canOperate = computed(() => canManageAccounts.value && organizationId.value !== null)
-const resourceAccept = computed(() => Object.values(resourceAcceptByType).join(','))
-const resourceTypeLabel = computed(() =>
-  resourceTypeOptions.find((type) => type.value === resourceType.value)?.label ?? '未识别'
+const resourceAccept = computed(() =>
+  Array.from(allowedResourceExtensions).map((extension) => `.${extension}`).join(',')
 )
+const resourceTypeSummary = computed(() => {
+  const counts = new Map<ResourceType, number>()
+  for (const item of resourceUploadItems.value) {
+    counts.set(item.type, (counts.get(item.type) ?? 0) + 1)
+  }
+
+  return resourceTypeOptions
+    .filter((type) => counts.has(type.value))
+    .map((type) => ({ type: type.value, label: type.label, count: counts.get(type.value) ?? 0 }))
+})
+const resourceSubmitButtonLabel = computed(() => {
+  if (resourceFileProgress.value) {
+    return `上传中 ${resourceFileProgress.value.current}/${resourceFileProgress.value.total}`
+  }
+  if (resourceBatchProgress.value) {
+    return `上传中 ${resourceBatchProgress.value.current}/${resourceBatchProgress.value.total}`
+  }
+  return '确认上传'
+})
 
 const targetSummary = computed(() => {
   if (activeUser.value) return `目标账号：${activeUser.value.username}`
@@ -593,49 +648,28 @@ function openResourceDialog(user?: CampusManagedUser) {
     activeUser.value = null
     return
   }
-  resourceFile.value = null
+  resourceUploadFileList.value = []
+  resourceUploadItems.value = []
   resourceName.value = ''
-  resourceType.value = ''
   resourceInfo.value = ''
   resourceBatchProgress.value = null
+  resourceFileProgress.value = null
   resourceStorageProgress.value = null
   resourceDialogVisible.value = true
 }
 
-function handleResourceFileChange(uploadFile: UploadFile) {
-  resourceFile.value = uploadFile.raw ?? null
-  if (!resourceFile.value) return
-  if (resourceFile.value.size > RESOURCE_UPLOAD_MAX_BYTES) {
-    ElMessage.warning('资源文件不能超过 200MB')
-    resourceFile.value = null
-    return
-  }
-
-  if (!resourceName.value.trim()) {
-    resourceName.value = stripFileExtension(resourceFile.value.name)
-  }
-
-  const detectedType = inferResourceType(resourceFile.value)
-  if (!detectedType) {
-    ElMessage.warning('暂不支持该资源格式')
-    resourceFile.value = null
-    resourceType.value = ''
-    return
-  }
-
-  resourceType.value = detectedType
+function handleResourceFileChange(_uploadFile: UploadFile, uploadFiles: UploadFiles) {
+  syncResourceUploadFiles(uploadFiles)
 }
 
-function handleResourceFileRemove() {
-  resourceFile.value = null
-  resourceName.value = ''
-  resourceType.value = ''
+function handleResourceFileRemove(_uploadFile: UploadFile, uploadFiles: UploadFiles) {
+  syncResourceUploadFiles(uploadFiles)
   resourceStorageProgress.value = null
 }
 
 async function submitUploadResource() {
   const orgId = requireOrganization()
-  if (!orgId || !resourceFile.value || !resourceType.value) return
+  if (!orgId || !resourceUploadItems.value.length) return
 
   resourceSubmitting.value = true
   try {
@@ -657,63 +691,70 @@ async function submitUploadResource() {
       batchTargets = allowed
     }
 
-    const uploadedFile = await ensureMainUploadedFile(resourceFile.value, {
-      directory: resourceStorageDirectory(resourceType.value),
-      onHashProgress: (progress) => {
-        resourceStorageProgress.value = { label: '计算文件 MD5', progress }
-      },
-      onUploadProgress: (progress) => {
-        resourceStorageProgress.value = { label: '确认资源文件', progress }
-      },
-      onMetadataProgress: (label) => {
-        resourceStorageProgress.value = { label, progress: 1 }
-      },
-    })
-    const resourcePayload = {
-      organization_id: orgId,
-      file: uploadedFile,
-      name: resourceName.value || stripFileExtension(resourceFile.value.name),
-      type: resourceType.value,
-      info: resourcePayloadInfo(uploadedFile),
+    const uploadItems = resourceUploadItems.value.slice()
+    const results: CampusOperationResult[] = []
+
+    for (const [index, item] of uploadItems.entries()) {
+      resourceFileProgress.value = {
+        current: index + 1,
+        total: uploadItems.length,
+        filename: item.file.name,
+      }
+
+      const resourcePayload = await prepareResourceUploadPayload(orgId, item, uploadItems.length)
+
+      if (!activeUser.value) {
+        results.push(...await uploadResourceForSelectedUsersSequentially(resourcePayload, batchTargets))
+        continue
+      }
+
+      const { data } = await uploadCampusResource({
+        ...resourcePayload,
+        user_ids: targetUserIds(),
+        operation_scope: operationScope(),
+      })
+      results.push(...data.data.results)
     }
 
-    if (!activeUser.value) {
-      const results = await uploadResourceForSelectedUsersSequentially(resourcePayload, batchTargets)
-      const successCount = results.filter((result) => result.success).length
-      const failedCount = results.length - successCount
-      resourceDialogVisible.value = false
-      showResults('上传资源', results, successCount, failedCount, skippedCount)
-      await loadUsers()
-      return
-    }
-
-    const { data } = await uploadCampusResource({
-      ...resourcePayload,
-      user_ids: targetUserIds(),
-      operation_scope: operationScope(),
-    })
+    const successCount = results.filter((result) => result.success).length
+    const failedCount = results.length - successCount
     resourceDialogVisible.value = false
-    showResults('上传资源', data.data.results, data.data.success_count, data.data.failed_count, data.data.skipped_count ?? 0)
+    showResults('上传资源', results, successCount, failedCount, skippedCount)
     await loadUsers()
   } catch (error) {
     ElMessage.error(`上传资源失败：${requestErrorMessage(error)}`)
   } finally {
     resourceSubmitting.value = false
     resourceBatchProgress.value = null
+    resourceFileProgress.value = null
     resourceStorageProgress.value = null
   }
 }
 
-async function uploadResourceForSelectedUsersSequentially(
-  payload: {
-    organization_id: number
-    file: MainUploadedFile
-    name: string
-    type: ResourceType
-    info?: string
-  },
-  targets: CampusManagedUser[],
-): Promise<CampusOperationResult[]> {
+async function prepareResourceUploadPayload(orgId: number, item: ResourceUploadItem, selectedFileCount: number): Promise<ResourceUploadPayload> {
+  const uploadedFile = await ensureMainUploadedFile(item.file, {
+    directory: resourceStorageDirectory(item.type),
+    onHashProgress: (progress) => {
+      resourceStorageProgress.value = { label: '计算文件 MD5', progress }
+    },
+    onUploadProgress: (progress) => {
+      resourceStorageProgress.value = { label: '确认资源文件', progress }
+    },
+    onMetadataProgress: (label) => {
+      resourceStorageProgress.value = { label, progress: 1 }
+    },
+  })
+
+  return {
+    organization_id: orgId,
+    file: uploadedFile,
+    name: resourceNameForItem(item, selectedFileCount),
+    type: item.type,
+    info: resourcePayloadInfo(uploadedFile),
+  }
+}
+
+async function uploadResourceForSelectedUsersSequentially(payload: ResourceUploadPayload, targets: CampusManagedUser[]): Promise<CampusOperationResult[]> {
   const results: CampusOperationResult[] = []
 
   for (const [index, user] of targets.entries()) {
@@ -744,20 +785,116 @@ async function uploadResourceForSelectedUsersSequentially(
   return results
 }
 
+type ResourceFileRejectionReason = 'size' | 'missingExtension' | 'doubleExtension' | 'unsupported'
+
+function syncResourceUploadFiles(uploadFiles: UploadFiles) {
+  const previousSingleFilename = resourceUploadItems.value.length === 1 ? resourceUploadItems.value[0].file.name : ''
+  const acceptedUploadFiles: UploadUserFile[] = []
+  const items: ResourceUploadItem[] = []
+  const rejectedCounts: Record<ResourceFileRejectionReason, number> = {
+    size: 0,
+    missingExtension: 0,
+    doubleExtension: 0,
+    unsupported: 0,
+  }
+
+  for (const uploadFile of uploadFiles) {
+    if (!uploadFile.raw) continue
+
+    const rejectionReason = resourceFileRejectionReason(uploadFile.raw)
+    if (rejectionReason) {
+      rejectedCounts[rejectionReason] += 1
+      continue
+    }
+
+    acceptedUploadFiles.push(uploadFile)
+    items.push({
+      file: uploadFile.raw,
+      type: inferResourceType(uploadFile.raw),
+    })
+  }
+
+  resourceUploadFileList.value = acceptedUploadFiles
+  resourceUploadItems.value = items
+  syncResourceNameWithFiles(items, previousSingleFilename)
+  warnRejectedResourceFiles(rejectedCounts)
+}
+
+function resourceFileRejectionReason(file: File): ResourceFileRejectionReason | null {
+  if (file.size > RESOURCE_UPLOAD_MAX_BYTES) return 'size'
+
+  const extension = resourceFileExtension(file)
+  if (!extension) return 'missingExtension'
+  if (hasDoubleExtension(file.name)) return 'doubleExtension'
+  if (!allowedResourceExtensions.has(extension)) return 'unsupported'
+
+  return null
+}
+
+function warnRejectedResourceFiles(rejectedCounts: Record<ResourceFileRejectionReason, number>) {
+  if (rejectedCounts.size) {
+    ElMessage.warning(`已跳过 ${rejectedCounts.size} 个超过 200MB 的资源文件`)
+  }
+  if (rejectedCounts.missingExtension) {
+    ElMessage.warning(`已跳过 ${rejectedCounts.missingExtension} 个缺少扩展名的资源文件`)
+  }
+  if (rejectedCounts.doubleExtension) {
+    ElMessage.warning(`已跳过 ${rejectedCounts.doubleExtension} 个多重扩展名的资源文件`)
+  }
+  if (rejectedCounts.unsupported) {
+    ElMessage.warning(`已跳过 ${rejectedCounts.unsupported} 个暂不支持的资源文件`)
+  }
+}
+
+function syncResourceNameWithFiles(items: ResourceUploadItem[], previousSingleFilename: string) {
+  if (items.length !== 1) {
+    resourceName.value = ''
+    return
+  }
+
+  if (!resourceName.value.trim() || items[0].file.name !== previousSingleFilename) {
+    resourceName.value = stripFileExtension(items[0].file.name)
+  }
+}
+
 function stripFileExtension(filename: string) {
   return filename.replace(/\.[^/.]+$/, '') || filename
 }
 
-function inferResourceType(file: File): ResourceType | '' {
-  const mimeType = file.type.toLowerCase()
-  const extension = file.name.split('.').pop()?.toLowerCase() ?? ''
+function resourceFileExtension(file: File) {
+  return file.name.split('.').pop()?.toLowerCase() ?? ''
+}
 
-  if (['glb', 'gltf', 'fbx', 'obj', 'stl'].includes(extension)) return 'polygen'
-  if (mimeType.startsWith('image/') || ['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(extension)) return 'picture'
-  if (mimeType.startsWith('video/') || ['mp4', 'webm', 'mov'].includes(extension)) return 'video'
-  if (mimeType.startsWith('audio/') || ['mp3', 'wav', 'ogg', 'm4a'].includes(extension)) return 'audio'
-  if (['pdf', 'zip', 'rar', '7z'].includes(extension)) return 'file'
-  return ''
+function hasDoubleExtension(filename: string) {
+  const basename = filename.replace(/\\/g, '/').split('/').pop() ?? filename
+  const withoutLastExtension = stripFileExtension(basename)
+  return withoutLastExtension.includes('.')
+}
+
+function inferResourceType(file: File): ResourceType {
+  const mimeType = file.type.toLowerCase()
+  const extension = resourceFileExtension(file)
+
+  for (const [resourceType, extensions] of Object.entries(resourceExtensionsByType) as Array<[ResourceType, string[]]>) {
+    if (extensions.includes(extension)) return resourceType
+  }
+
+  if (mimeType.startsWith('image/')) return 'picture'
+  if (mimeType.startsWith('video/')) return 'video'
+  if (mimeType.startsWith('audio/')) return 'audio'
+  return 'file'
+}
+
+function resourceNameForItem(item: ResourceUploadItem, selectedFileCount: number) {
+  if (selectedFileCount === 1 && resourceName.value.trim()) {
+    return resourceName.value.trim()
+  }
+
+  return stripFileExtension(item.file.name)
+}
+
+function resourceTypeLabel(type: ResourceType) {
+  return resourceTypeOptions.find((option) => option.value === type)?.label ?? '其他文件'
 }
 
 function resourceStorageDirectory(type: ResourceType): string {
@@ -889,6 +1026,8 @@ onMounted(async () => {
   min-height: 32px;
   display: flex;
   align-items: center;
+  gap: var(--spacing-xs);
+  flex-wrap: wrap;
   color: var(--text-secondary);
 }
 
