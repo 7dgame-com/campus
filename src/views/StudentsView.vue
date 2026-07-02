@@ -238,6 +238,13 @@ import { useCurrentOrganization } from '../composables/useCurrentOrganization'
 import { usePermissions } from '../composables/usePermissions'
 import { ensureMainUploadedFile, type MainUploadedFile } from '../services/mainFileUpload'
 import { formatTimestamp, normalizeList, normalizeTotal } from '../utils/apiData'
+import {
+  campusAllowedResourceExtensions,
+  campusResourceAccept,
+  campusResourceTypeOptions,
+  inferCampusResourceType,
+  type CampusResourceType,
+} from '../utils/resourceUploadPolicy'
 
 const ROLE_PRIORITY: Record<string, number> = { root: 4, admin: 3, manager: 2, user: 1 }
 const BATCH_PROTECTED_ROLES = ['root', 'admin', 'manager'] as const
@@ -272,7 +279,7 @@ const clearPreviewLoading = ref(false)
 const clearSubmitting = ref(false)
 const resourceDialogVisible = ref(false)
 const resourceUploadFileList = ref<UploadUserFile[]>([])
-type ResourceType = 'polygen' | 'voxel' | 'picture' | 'video' | 'audio' | 'particle' | 'file'
+type ResourceType = CampusResourceType
 interface ResourceUploadItem {
   file: File
   type: ResourceType
@@ -296,31 +303,11 @@ const resultDialogVisible = ref(false)
 const resultTitle = ref('')
 const operationResults = ref<CampusOperationResult[]>([])
 let mounted = false
-const resourceTypeOptions: Array<{ label: string; value: ResourceType }> = [
-  { label: '3D 模型', value: 'polygen' },
-  { label: '体素模型', value: 'voxel' },
-  { label: '图片', value: 'picture' },
-  { label: '视频', value: 'video' },
-  { label: '音频', value: 'audio' },
-  { label: '粒子', value: 'particle' },
-  { label: '其他文件', value: 'file' },
-]
-const resourceExtensionsByType: Record<ResourceType, string[]> = {
-  polygen: ['glb'],
-  voxel: ['vox'],
-  picture: ['jpg', 'jpeg', 'png', 'gif', 'webp'],
-  video: ['mp4', 'webm', 'mov'],
-  audio: ['mp3', 'wav', 'ogg', 'm4a'],
-  particle: ['json'],
-  file: ['pdf', 'doc', 'docx', 'ppt', 'pptx', 'xls', 'xlsx', 'txt', 'md', 'csv', 'zip', 'rar', '7z'],
-}
-const allowedResourceExtensions = new Set(Object.values(resourceExtensionsByType).flat())
+const resourceTypeOptions = campusResourceTypeOptions
 
 const canManageAccounts = computed(() => can('manage-student-accounts'))
 const canOperate = computed(() => canManageAccounts.value && organizationId.value !== null)
-const resourceAccept = computed(() =>
-  Array.from(allowedResourceExtensions).map((extension) => `.${extension}`).join(',')
-)
+const resourceAccept = campusResourceAccept
 const resourceTypeSummary = computed(() => {
   const counts = new Map<ResourceType, number>()
   for (const item of resourceUploadItems.value) {
@@ -826,7 +813,7 @@ function resourceFileRejectionReason(file: File): ResourceFileRejectionReason | 
   const extension = resourceFileExtension(file)
   if (!extension) return 'missingExtension'
   if (hasDoubleExtension(file.name)) return 'doubleExtension'
-  if (!allowedResourceExtensions.has(extension)) return 'unsupported'
+  if (!campusAllowedResourceExtensions.has(extension)) return 'unsupported'
 
   return null
 }
@@ -872,17 +859,10 @@ function hasDoubleExtension(filename: string) {
 }
 
 function inferResourceType(file: File): ResourceType {
-  const mimeType = file.type.toLowerCase()
   const extension = resourceFileExtension(file)
-
-  for (const [resourceType, extensions] of Object.entries(resourceExtensionsByType) as Array<[ResourceType, string[]]>) {
-    if (extensions.includes(extension)) return resourceType
-  }
-
-  if (mimeType.startsWith('image/')) return 'picture'
-  if (mimeType.startsWith('video/')) return 'video'
-  if (mimeType.startsWith('audio/')) return 'audio'
-  return 'file'
+  const resourceType = inferCampusResourceType(extension)
+  if (!resourceType) throw new Error(`Unsupported campus resource extension: ${extension}`)
+  return resourceType
 }
 
 function resourceNameForItem(item: ResourceUploadItem, selectedFileCount: number) {
@@ -894,7 +874,7 @@ function resourceNameForItem(item: ResourceUploadItem, selectedFileCount: number
 }
 
 function resourceTypeLabel(type: ResourceType) {
-  return resourceTypeOptions.find((option) => option.value === type)?.label ?? '其他文件'
+  return resourceTypeOptions.find((option) => option.value === type)?.label ?? '未知资源'
 }
 
 function resourceStorageDirectory(type: ResourceType): string {
