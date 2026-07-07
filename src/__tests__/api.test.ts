@@ -67,6 +67,7 @@ describe('api token bootstrap', () => {
 
       const formData = config.data as FormData
       expect(formData.get('organization_id')).toBe('7')
+      expect(formData.get('operation_scope')).toBe('batch')
       expect(formData.get('user_ids')).toBe('[11,12]')
       expect(formData.get('file')).toBeInstanceOf(File)
 
