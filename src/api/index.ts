@@ -362,9 +362,11 @@ export function importCampusSceneZip(payload: {
   organization_id: number
   user_ids?: number[]
   file: File
+  operation_scope?: 'single' | 'batch'
 }) {
   const formData = new FormData()
   formData.append('organization_id', String(payload.organization_id))
+  formData.append('operation_scope', payload.operation_scope ?? 'batch')
   formData.append('file', payload.file)
   if (payload.user_ids?.length) {
     formData.append('user_ids', JSON.stringify(payload.user_ids))

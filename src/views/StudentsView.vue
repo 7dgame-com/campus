@@ -9,6 +9,7 @@
         <el-button :icon="Key" type="primary" :disabled="!canOperate" @click="openPasswordDialog()">批量改密码</el-button>
         <el-button :icon="Brush" type="danger" plain :disabled="!canOperate" @click="openClearDialog()">批量清空</el-button>
         <el-button :icon="Upload" :disabled="!canOperate" @click="openResourceDialog()">批量上传资源</el-button>
+        <el-button :icon="DocumentAdd" :disabled="!canOperate" @click="openSceneImportDialog()">导入场景</el-button>
       </div>
     </section>
 
@@ -61,12 +62,13 @@
         <el-table-column prop="created_at" label="创建时间" width="180">
           <template #default="{ row }">{{ formatTimestamp(row.created_at) }}</template>
         </el-table-column>
-        <el-table-column v-if="canManageAccounts" label="操作" width="260" fixed="right">
+        <el-table-column v-if="canManageAccounts" label="操作" width="340" fixed="right">
           <template #default="{ row }">
             <div class="row-actions">
               <el-button link :icon="Key" type="primary" @click="openPasswordDialog(row)">改密码</el-button>
               <el-button link :icon="Brush" type="danger" @click="openClearDialog(row)">清空</el-button>
               <el-button link :icon="Upload" @click="openResourceDialog(row)">上传资源</el-button>
+              <el-button v-if="!hasProtectedBatchRole(row)" link :icon="DocumentAdd" @click="openSceneImportDialog(row)">导入场景</el-button>
             </div>
           </template>
         </el-table-column>
@@ -204,6 +206,53 @@
       </template>
     </el-dialog>
 
+    <el-dialog
+      v-model="sceneImportDialogVisible"
+      title="导入场景"
+      width="560px"
+      :close-on-click-modal="!sceneImportSubmitting"
+      :close-on-press-escape="!sceneImportSubmitting"
+      :show-close="!sceneImportSubmitting"
+    >
+      <div class="dialog-body">
+        <el-alert :title="sceneImportTargetSummary" type="info" :closable="false" show-icon />
+        <el-alert
+          title="场景包会复用项目现有导出/导入能力；多个账号会按顺序逐个导入。"
+          type="warning"
+          :closable="false"
+          show-icon
+        />
+        <el-alert
+          v-if="sceneImportProgress"
+          :title="`正在导入第 ${sceneImportProgress.current}/${sceneImportProgress.total} 个账号：${sceneImportProgress.username}`"
+          type="success"
+          :closable="false"
+          show-icon
+        />
+        <el-form label-position="top">
+          <el-form-item label="场景包">
+            <el-upload
+              v-model:file-list="sceneImportFileList"
+              drag
+              accept=".zip"
+              :auto-upload="false"
+              :on-change="handleSceneZipChange"
+              :on-remove="handleSceneZipRemove"
+            >
+              <el-icon class="upload-icon"><DocumentAdd /></el-icon>
+              <div class="el-upload__text">拖入 .zip 场景包或点击选择</div>
+            </el-upload>
+          </el-form-item>
+        </el-form>
+      </div>
+      <template #footer>
+        <el-button :disabled="sceneImportSubmitting" @click="sceneImportDialogVisible = false">取消</el-button>
+        <el-button type="primary" :loading="sceneImportSubmitting" :disabled="!sceneImportFile" @click="submitImportScene">
+          确认导入
+        </el-button>
+      </template>
+    </el-dialog>
+
     <el-dialog v-model="resultDialogVisible" :title="resultTitle" width="640px">
       <el-table :data="operationResults" size="small" max-height="320">
         <el-table-column prop="username" label="用户名" min-width="150" />
@@ -223,9 +272,10 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox, type UploadFile, type UploadFiles, type UploadUserFile } from 'element-plus'
-import { Brush, Key, Refresh, Upload } from '@element-plus/icons-vue'
+import { Brush, DocumentAdd, Key, Refresh, Upload } from '@element-plus/icons-vue'
 import {
   clearCampusContent,
+  importCampusSceneZip,
   listCampusManagedUsers,
   previewCampusClearContent,
   updateCampusUserPassword,
@@ -299,6 +349,11 @@ const resourceSubmitting = ref(false)
 const resourceBatchProgress = ref<{ current: number; total: number; username: string } | null>(null)
 const resourceFileProgress = ref<{ current: number; total: number; filename: string } | null>(null)
 const resourceStorageProgress = ref<{ label: string; progress: number } | null>(null)
+const sceneImportDialogVisible = ref(false)
+const sceneImportFileList = ref<UploadUserFile[]>([])
+const sceneImportFile = ref<File | null>(null)
+const sceneImportSubmitting = ref(false)
+const sceneImportProgress = ref<{ current: number; total: number; username: string } | null>(null)
 const resultDialogVisible = ref(false)
 const resultTitle = ref('')
 const operationResults = ref<CampusOperationResult[]>([])
@@ -336,6 +391,15 @@ const targetSummary = computed(() => {
     return `目标账号：已选 ${selectedUsers.value.length} 个账号`
   }
   return '目标账号：当前组织全部普通用户（统一操作跳过 root/admin/manager）'
+})
+const sceneImportTargetSummary = computed(() => {
+  if (activeUser.value) return `目标账号：${activeUser.value.username}`
+  if (selectedUsers.value.length) {
+    const { allowed, skipped } = splitBatchTargets(selectedUsers.value)
+    if (skipped.length) return `目标账号：已选 ${selectedUsers.value.length} 个账号，将依次导入 ${allowed.length} 个普通学生，跳过 ${skipped.length} 个管理员账号`
+    return `目标账号：已选 ${selectedUsers.value.length} 个账号，将依次导入`
+  }
+  return '目标账号：当前组织全部普通学生（会依次导入，跳过 root/admin/manager）'
 })
 
 function highestRole(roles?: string[]) {
@@ -447,6 +511,7 @@ function showResults(title: string, results: CampusOperationResult[], successCou
 
 function resultDetail(result: CampusOperationResult) {
   if (result.errors?.length) return result.errors.join('；')
+  if (result.verse_id) return `${result.message}：场景 #${result.verse_id}`
   if (result.resource_name) return `${result.message}：${result.resource_name}`
   return result.error || result.message
 }
@@ -645,6 +710,27 @@ function openResourceDialog(user?: CampusManagedUser) {
   resourceDialogVisible.value = true
 }
 
+function openSceneImportDialog(user?: CampusManagedUser) {
+  if (!requireOrganization()) return
+  activeUser.value = user ?? null
+
+  if (activeUser.value && hasProtectedBatchRole(activeUser.value)) {
+    ElMessage.warning('导入场景只处理普通学生账号')
+    activeUser.value = null
+    return
+  }
+
+  if (!ensureSceneImportSelectionCanOperate()) {
+    activeUser.value = null
+    return
+  }
+
+  sceneImportFileList.value = []
+  sceneImportFile.value = null
+  sceneImportProgress.value = null
+  sceneImportDialogVisible.value = true
+}
+
 function handleResourceFileChange(_uploadFile: UploadFile, uploadFiles: UploadFiles) {
   syncResourceUploadFiles(uploadFiles)
 }
@@ -652,6 +738,141 @@ function handleResourceFileChange(_uploadFile: UploadFile, uploadFiles: UploadFi
 function handleResourceFileRemove(_uploadFile: UploadFile, uploadFiles: UploadFiles) {
   syncResourceUploadFiles(uploadFiles)
   resourceStorageProgress.value = null
+}
+
+function handleSceneZipChange(uploadFile: UploadFile, uploadFiles: UploadFiles) {
+  const file = uploadFile.raw
+  if (!file) return
+
+  if (!file.name.toLowerCase().endsWith('.zip')) {
+    ElMessage.warning('请选择 .zip 场景包')
+    syncSceneImportFiles(uploadFiles)
+    return
+  }
+
+  syncSceneImportFiles(uploadFiles)
+}
+
+function handleSceneZipRemove() {
+  sceneImportFile.value = null
+}
+
+function syncSceneImportFiles(uploadFiles: UploadFiles) {
+  const zipFiles = [...uploadFiles]
+    .filter((item) => item.raw?.name.toLowerCase().endsWith('.zip'))
+  const latestZip = zipFiles.length ? zipFiles[zipFiles.length - 1] : undefined
+
+  sceneImportFileList.value = latestZip ? [latestZip] : []
+  sceneImportFile.value = latestZip?.raw ?? null
+}
+
+async function submitImportScene() {
+  const orgId = requireOrganization()
+  if (!orgId || !sceneImportFile.value) return
+
+  const targetDescription = sceneImportTargetSummary.value.replace('目标账号：', '')
+  const note = sceneImportProtectionNote()
+
+  try {
+    await ElMessageBox.confirm(`确认将该场景包按账号依次导入到 ${targetDescription}？${note ? `\n${note}` : ''}`, '二次确认', {
+      type: 'warning',
+      confirmButtonText: '确认导入',
+      cancelButtonText: '取消',
+    })
+  } catch {
+    return
+  }
+
+  sceneImportSubmitting.value = true
+  try {
+    const { targets, skippedCount } = await resolveSceneImportTargets(orgId)
+    if (!targets.length) {
+      ElMessage.warning('没有可导入场景的普通学生账号')
+      return
+    }
+
+    const results = await importSceneForUsersSequentially(orgId, sceneImportFile.value, targets)
+    const successCount = results.filter((result) => result.success).length
+    const failedCount = results.length - successCount
+
+    sceneImportDialogVisible.value = false
+    showResults('导入场景', results, successCount, failedCount, skippedCount)
+    await loadUsers()
+  } catch (error) {
+    ElMessage.error(`导入场景失败：${requestErrorMessage(error)}`)
+  } finally {
+    sceneImportSubmitting.value = false
+    sceneImportProgress.value = null
+  }
+}
+
+function sceneImportProtectionNote() {
+  if (activeUser.value) return ''
+  return '导入会按账号顺序执行，只处理普通学生，会跳过 root/admin/manager 账号。'
+}
+
+function ensureSceneImportSelectionCanOperate() {
+  if (activeUser.value || !selectedUsers.value.length) return true
+
+  const { allowed, skipped } = splitBatchTargets(selectedUsers.value)
+  if (!allowed.length) {
+    ElMessage.warning('已选账号均为 root/admin/manager，无法导入场景')
+    return false
+  }
+
+  warnSkippedSceneImportTargets(skipped)
+  return true
+}
+
+function warnSkippedSceneImportTargets(skippedTargets: CampusManagedUser[]) {
+  if (!skippedTargets.length) return
+  ElMessage.warning(`导入场景已跳过 ${skippedTargets.length} 个 root/admin/manager 账号`)
+}
+
+async function resolveSceneImportTargets(orgId: number): Promise<{ targets: CampusManagedUser[]; skippedCount: number }> {
+  if (activeUser.value) {
+    return { targets: [activeUser.value], skippedCount: 0 }
+  }
+
+  const sourceTargets = selectedUsers.value.length
+    ? selectedUsers.value.slice()
+    : await loadAllManageableUsers(orgId)
+  const { allowed, skipped } = splitBatchTargets(sourceTargets)
+  warnSkippedSceneImportTargets(skipped)
+
+  return { targets: allowed, skippedCount: skipped.length }
+}
+
+async function importSceneForUsersSequentially(orgId: number, file: File, targets: CampusManagedUser[]): Promise<CampusOperationResult[]> {
+  const results: CampusOperationResult[] = []
+
+  for (const [index, user] of targets.entries()) {
+    sceneImportProgress.value = {
+      current: index + 1,
+      total: targets.length,
+      username: user.username,
+    }
+
+    try {
+      const { data } = await importCampusSceneZip({
+        organization_id: orgId,
+        user_ids: [user.id],
+        file,
+        operation_scope: 'batch',
+      })
+      results.push(...data.data.results)
+    } catch (error) {
+      results.push({
+        user_id: user.id,
+        username: user.username,
+        success: false,
+        message: '导入失败',
+        error: requestErrorMessage(error),
+      })
+    }
+  }
+
+  return results
 }
 
 async function submitUploadResource() {
