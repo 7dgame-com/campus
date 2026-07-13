@@ -15,7 +15,7 @@ export default {
     dashboard: '概要',
     schools: '組織',
     classes: 'クラス',
-    students: '学生',
+    students: 'アカウント',
     tools: '教材ツール',
     apiDiagnostics: 'API診断',
   },

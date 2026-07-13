@@ -102,6 +102,11 @@ export default defineConfig({
         target: 'http://localhost:8081',
         changeOrigin: true,
         rewrite: (path: string) => path.replace(/^\/api/, '')
+      },
+      '/api-auth/': {
+        target: 'http://localhost:8086',
+        changeOrigin: true,
+        rewrite: (path: string) => path.replace(/^\/api-auth/, '')
       }
     }
   },

@@ -214,7 +214,7 @@ describe('usePermissions', () => {
     expect(permissions.can('manage-global-tools')).toBe(false)
   })
 
-  it('locks all campus functions when opened from the public plugin group', async () => {
+  it('allows a root opened from the public plugin group to read platform accounts only', async () => {
     sessionState.loaded.value = true
     sessionState.user.value = {
       roles: ['root', 'admin', 'manager'],
@@ -231,11 +231,37 @@ describe('usePermissions', () => {
     await permissions.fetchPermissions()
 
     expect(permissions.hasOrganizationContext.value).toBe(false)
+    expect(permissions.hasPlatformScope.value).toBe(true)
     expect(permissions.isCampusAdmin.value).toBe(false)
-    expect(permissions.hasCampusAccess.value).toBe(false)
-    expect(permissions.hasAny()).toBe(false)
+    expect(permissions.hasCampusAccess.value).toBe(true)
+    expect(permissions.hasAny()).toBe(true)
     expect(permissions.can('view-dashboard')).toBe(false)
+    expect(permissions.can('view-students')).toBe(true)
+    expect(permissions.can('manage-student-accounts')).toBe(true)
     expect(permissions.can('manage-global-tools')).toBe(false)
+  })
+
+  it('treats an explicit host organization id as organization context even without a name', async () => {
+    sessionState.loaded.value = true
+    sessionState.user.value = {
+      roles: ['admin'],
+      organizations: [{ id: 7, title: '第一实验学校', name: 'school-first-lab' }],
+    }
+    sessionState.isAuthenticated.value = true
+    hostContextState.hasOrganizationGroup.value = false
+    hostContextState.isPublicPluginGroup.value = true
+    hostContextState.currentOrganizationId.value = 7
+    hostContextState.currentOrganizationName.value = ''
+
+    const { usePermissions } = await loadComposable()
+    const permissions = usePermissions()
+
+    await permissions.fetchPermissions()
+
+    expect(permissions.hasOrganizationContext.value).toBe(true)
+    expect(permissions.hasPlatformScope.value).toBe(false)
+    expect(permissions.belongsToCurrentOrganization.value).toBe(true)
+    expect(permissions.can('view-students')).toBe(true)
   })
 
   it('denies authenticated sessions without a platform role', async () => {
