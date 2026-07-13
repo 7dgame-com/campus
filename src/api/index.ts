@@ -215,6 +215,35 @@ export interface CampusManagedUser extends UserItem {
   content_counts?: CampusContentCounts
 }
 
+export interface LoginAuditStats {
+  legacyUserId: number | null
+  identityUserId: string | null
+  username: string | null
+  loginCount: number
+  failedLoginCount: number
+  lastLoginAt: string | null
+  lastFailedLoginAt: string | null
+  updatedAt: string | null
+}
+
+export interface LoginAuditRecentEvent {
+  eventKey: string
+  eventType: string
+  success: boolean
+  occurredAt: string
+  source: string
+  traceId: string | null
+  metadata: unknown
+}
+
+export interface LoginAuditResponse {
+  code: number
+  data: {
+    stats: LoginAuditStats | null
+    recentEvents: LoginAuditRecentEvent[]
+  }
+}
+
 export interface CampusOperationResult {
   user_id: number
   username: string
@@ -327,6 +356,12 @@ export function listUsers(params?: Record<string, unknown>) {
 
 export function listCampusManagedUsers(params?: Record<string, unknown>) {
   return campusApi.get<PaginatedResponse<CampusManagedUser>>('/users', { params })
+}
+
+export function getCampusUserLoginAudit(userId: number, organizationId: number | null) {
+  return identityPluginUserApi.get<LoginAuditResponse>(`/users/${userId}/login-audit`, {
+    params: organizationId === null ? undefined : { organization_id: organizationId },
+  })
 }
 
 export function updateCampusUserPassword(payload: {

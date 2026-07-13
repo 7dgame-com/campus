@@ -2,10 +2,10 @@
   <div class="students-view">
     <section class="page-header">
       <div>
-        <h2>组织账号</h2>
-        <p>维护当前组织内老师和学生账号的密码、资源、场景归属。</p>
+        <h2>账号管理</h2>
+        <p>查看当前管理范围内老师和学生账号的登录记录；组织范围由系统自动确定。</p>
       </div>
-      <div v-if="canManageAccounts" class="header-actions">
+      <div v-if="canOperate" class="header-actions">
         <el-button :icon="Key" type="primary" :disabled="!canOperate" @click="openPasswordDialog()">批量改密码</el-button>
         <el-button :icon="Brush" type="danger" plain :disabled="!canOperate" @click="openClearDialog()">批量清空</el-button>
         <el-button :icon="Upload" :disabled="!canOperate" @click="openResourceDialog()">批量上传资源</el-button>
@@ -22,7 +22,7 @@
         @clear="refreshFromFirstPage"
         @keyup.enter="refreshFromFirstPage"
       />
-      <el-tag size="large" type="info">当前组织：{{ organizationTitle }}</el-tag>
+      <el-tag size="large" type="info">统计范围：{{ scopeLabel }}</el-tag>
       <el-button :icon="Refresh" @click="refreshFromFirstPage">查询</el-button>
     </section>
 
@@ -34,7 +34,7 @@
         stripe
         @selection-change="selectedUsers = $event"
       >
-        <el-table-column v-if="canManageAccounts" type="selection" width="46" />
+        <el-table-column v-if="canOperate" type="selection" width="46" />
         <el-table-column prop="username" label="用户名" min-width="140" />
         <el-table-column prop="nickname" label="姓名/昵称" min-width="140">
           <template #default="{ row }">{{ row.nickname || '-' }}</template>
@@ -47,12 +47,7 @@
             <el-tag :type="roleTagType(highestRole(row.roles))" size="small">{{ roleLabel(highestRole(row.roles)) }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="组织" min-width="180">
-          <template #default="{ row }">
-            <el-tag size="small" type="info">{{ organizationLabel(row) }}</el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column v-if="canManageAccounts" label="内容" width="150">
+        <el-table-column v-if="canOperate" label="内容" width="150">
           <template #default="{ row }">
             <span class="content-counts">
               场景 {{ row.content_counts?.verse_count ?? 0 }} / 资源 {{ row.content_counts?.resource_count ?? 0 }}
@@ -62,13 +57,16 @@
         <el-table-column prop="created_at" label="创建时间" width="180">
           <template #default="{ row }">{{ formatTimestamp(row.created_at) }}</template>
         </el-table-column>
-        <el-table-column v-if="canManageAccounts" label="操作" width="340" fixed="right">
+        <el-table-column v-if="canManageAccounts" label="操作" :width="canOperate ? 440 : 120" fixed="right">
           <template #default="{ row }">
             <div class="row-actions">
-              <el-button link :icon="Key" type="primary" @click="openPasswordDialog(row)">改密码</el-button>
-              <el-button link :icon="Brush" type="danger" @click="openClearDialog(row)">清空</el-button>
-              <el-button link :icon="Upload" @click="openResourceDialog(row)">上传资源</el-button>
-              <el-button v-if="!hasProtectedBatchRole(row)" link :icon="DocumentAdd" @click="openSceneImportDialog(row)">导入场景</el-button>
+              <el-button link :icon="Clock" type="primary" @click="openLoginAudit(row)">登录记录</el-button>
+              <template v-if="canOperate">
+                <el-button link :icon="Key" type="primary" @click="openPasswordDialog(row)">改密码</el-button>
+                <el-button link :icon="Brush" type="danger" @click="openClearDialog(row)">清空</el-button>
+                <el-button link :icon="Upload" @click="openResourceDialog(row)">上传资源</el-button>
+                <el-button v-if="!hasProtectedBatchRole(row)" link :icon="DocumentAdd" @click="openSceneImportDialog(row)">导入场景</el-button>
+              </template>
             </div>
           </template>
         </el-table-column>
@@ -266,17 +264,24 @@
         </el-table-column>
       </el-table>
     </el-dialog>
+
+    <LoginAuditDialog
+      ref="loginAuditDialogRef"
+      :organization-id="organizationId"
+      :allow-platform-scope="hasPlatformScope"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox, type UploadFile, type UploadFiles, type UploadUserFile } from 'element-plus'
-import { Brush, DocumentAdd, Key, Refresh, Upload } from '@element-plus/icons-vue'
+import { Brush, Clock, DocumentAdd, Key, Refresh, Upload } from '@element-plus/icons-vue'
 import {
   clearCampusContent,
   importCampusSceneZip,
   listCampusManagedUsers,
+  listUsers,
   previewCampusClearContent,
   updateCampusUserPassword,
   uploadCampusResource,
@@ -286,6 +291,7 @@ import {
 } from '../api'
 import { useCurrentOrganization } from '../composables/useCurrentOrganization'
 import { usePermissions } from '../composables/usePermissions'
+import LoginAuditDialog from '../components/LoginAuditDialog.vue'
 import { ensureMainUploadedFile, type MainUploadedFile } from '../services/mainFileUpload'
 import { formatTimestamp, normalizeList, normalizeTotal } from '../utils/apiData'
 import {
@@ -301,9 +307,8 @@ const BATCH_PROTECTED_ROLES = ['root', 'admin', 'manager'] as const
 const RESOURCE_UPLOAD_MAX_BYTES = 200 * 1024 * 1024
 const ALL_MANAGED_USERS_PAGE_SIZE = 100
 const PASSWORD_POLICY_HINT = '密码要求：8-64 位，需包含大写字母、小写字母、数字、特殊字符中的至少 3 类，且不能包含用户名或邮箱信息。'
-const { can } = usePermissions()
+const { can, hasPlatformScope } = usePermissions()
 const {
-  organization,
   organizationName,
   organizationId,
   organizationTitle,
@@ -318,6 +323,7 @@ const search = ref('')
 const page = ref(1)
 const pageSize = ref(20)
 const total = ref(0)
+const loginAuditDialogRef = ref<InstanceType<typeof LoginAuditDialog> | null>(null)
 
 const activeUser = ref<CampusManagedUser | null>(null)
 const passwordDialogVisible = ref(false)
@@ -358,10 +364,26 @@ const resultDialogVisible = ref(false)
 const resultTitle = ref('')
 const operationResults = ref<CampusOperationResult[]>([])
 let mounted = false
+let userListRequestSequence = 0
 const resourceTypeOptions = campusResourceTypeOptions
 
 const canManageAccounts = computed(() => can('manage-student-accounts'))
 const canOperate = computed(() => canManageAccounts.value && organizationId.value !== null)
+const scopeLabel = computed(() => {
+  if (organizationId.value !== null) return organizationTitle.value || organizationName.value
+  if (hasPlatformScope.value) return '全平台'
+  return organizationTitle.value || organizationName.value || '未确定'
+})
+const scopeSignature = computed(() => [
+  organizationId.value ?? '',
+  organizationName.value,
+  hasPlatformScope.value ? 'platform' : 'organization-or-unavailable',
+].join(':'))
+
+function openLoginAudit(user: CampusManagedUser) {
+  loginAuditDialogRef.value?.open(user)
+}
+
 const resourceAccept = campusResourceAccept
 const resourceTypeSummary = computed(() => {
   const counts = new Map<ResourceType, number>()
@@ -497,12 +519,6 @@ function requireOrganization() {
   return organizationId.value
 }
 
-function organizationLabel(row: CampusManagedUser) {
-  const currentOrganizationId = organizationId.value
-  const rowOrganization = row.organizations?.find((item) => item.id === currentOrganizationId)
-  return rowOrganization?.title ?? organization.value?.title ?? organizationTitle.value
-}
-
 function showResults(title: string, results: CampusOperationResult[], successCount: number, failedCount: number, skippedCount = 0) {
   resultTitle.value = `${title}：成功 ${successCount}，失败 ${failedCount}${skippedCount ? `，跳过 ${skippedCount}` : ''}`
   operationResults.value = results
@@ -518,36 +534,53 @@ function resultDetail(result: CampusOperationResult) {
 
 function refreshFromFirstPage() {
   page.value = 1
-  loadUsers()
+  void loadUsers()
+}
+
+function clearUserList() {
+  users.value = []
+  selectedUsers.value = []
+  total.value = 0
+}
+
+function invalidateUserList() {
+  userListRequestSequence += 1
+  loading.value = false
+  clearUserList()
 }
 
 async function loadUsers() {
-  const orgId = requireOrganization()
-  if (!orgId) {
-    users.value = []
-    total.value = 0
+  const requestId = ++userListRequestSequence
+  const orgId = organizationId.value
+  if (!orgId && !hasPlatformScope.value) {
+    clearUserList()
+    if (requestId === userListRequestSequence) loading.value = false
     return
   }
 
+  clearUserList()
   loading.value = true
   try {
     const params: Record<string, unknown> = {
       page: page.value,
       pageSize: pageSize.value,
-      organization_id: orgId,
     }
+    if (orgId) params.organization_id = orgId
     if (search.value.trim()) params.search = search.value.trim()
 
-    const { data } = await listCampusManagedUsers(params)
+    const { data } = orgId
+      ? await listCampusManagedUsers(params)
+      : await listUsers(params)
+    if (requestId !== userListRequestSequence) return
     users.value = normalizeList<CampusManagedUser>(data)
     total.value = normalizeTotal<CampusManagedUser>(data)
     selectedUsers.value = []
   } catch {
-    users.value = []
-    total.value = 0
+    if (requestId !== userListRequestSequence) return
+    clearUserList()
     ElMessage.error('账号加载失败')
   } finally {
-    loading.value = false
+    if (requestId === userListRequestSequence) loading.value = false
   }
 }
 
@@ -1114,8 +1147,9 @@ function requestErrorMessage(error: unknown): string {
   return err.response?.data?.message || err.response?.data?.error || err.message || '请求失败'
 }
 
-watch(organizationId, (id, previousId) => {
-  if (!mounted || !id || id === previousId) return
+watch(scopeSignature, (signature, previousSignature) => {
+  if (!mounted || signature === previousSignature) return
+  invalidateUserList()
   refreshFromFirstPage()
 })
 
@@ -1246,8 +1280,7 @@ onMounted(async () => {
   .header-actions,
   .header-actions .el-button,
   .toolbar,
-  .toolbar .el-input,
-  .toolbar .el-select {
+  .toolbar .el-input {
     width: 100%;
   }
 }

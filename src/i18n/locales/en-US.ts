@@ -15,7 +15,7 @@ export default {
     dashboard: 'Overview',
     schools: 'Organization',
     classes: 'Classes',
-    students: 'Students',
+    students: 'Accounts',
     tools: 'Teaching Tools',
     apiDiagnostics: 'API Diagnostics',
   },

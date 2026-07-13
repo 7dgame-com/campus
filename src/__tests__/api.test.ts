@@ -94,6 +94,68 @@ describe('api token bootstrap', () => {
     }
   })
 
+  it('loads login audit records with the current organization scope', async () => {
+    localStorage.setItem('campus-plugin-token', 'campus-token')
+
+    const { getCampusUserLoginAudit, identityPluginUserApi } = await import('../api/index')
+    const originalAdapter = identityPluginUserApi.defaults.adapter
+    identityPluginUserApi.defaults.adapter = async (config: import('axios').InternalAxiosRequestConfig) => {
+      expect(config.baseURL).toBe('/api-auth/v1/plugin-user')
+      expect(config.url).toBe('/users/24/login-audit')
+      expect(config.method).toBe('get')
+      expect(config.headers.Authorization).toBe('Bearer campus-token')
+      expect(config.params).toEqual({ organization_id: 7 })
+
+      return {
+        status: 200,
+        statusText: 'OK',
+        data: {
+          code: 0,
+          data: {
+            stats: { legacyUserId: 24, loginCount: 2, failedLoginCount: 0 },
+            recentEvents: [],
+          },
+        },
+        headers: {},
+        config,
+      }
+    }
+
+    try {
+      const response = await getCampusUserLoginAudit(24, 7)
+
+      expect(response.data.data.stats?.loginCount).toBe(2)
+    } finally {
+      identityPluginUserApi.defaults.adapter = originalAdapter
+    }
+  })
+
+  it('loads platform login audit records without an organization query for root', async () => {
+    localStorage.setItem('campus-plugin-token', 'root-token')
+
+    const { getCampusUserLoginAudit, identityPluginUserApi } = await import('../api/index')
+    const originalAdapter = identityPluginUserApi.defaults.adapter
+    identityPluginUserApi.defaults.adapter = async (config: import('axios').InternalAxiosRequestConfig) => {
+      expect(config.url).toBe('/users/24/login-audit')
+      expect(config.headers.Authorization).toBe('Bearer root-token')
+      expect(config.params).toBeUndefined()
+
+      return {
+        status: 200,
+        statusText: 'OK',
+        data: { code: 0, data: { stats: null, recentEvents: [] } },
+        headers: {},
+        config,
+      }
+    }
+
+    try {
+      await getCampusUserLoginAudit(24, null)
+    } finally {
+      identityPluginUserApi.defaults.adapter = originalAdapter
+    }
+  })
+
   it('uploads campus resources through the organization-scoped wrapper', async () => {
     localStorage.setItem('campus-plugin-token', 'campus-token')
 

@@ -15,7 +15,7 @@ export default {
     dashboard: '总览',
     schools: '组织',
     classes: '班级',
-    students: '学生',
+    students: '账号',
     tools: '教学工具',
     apiDiagnostics: 'API 诊断',
   },
