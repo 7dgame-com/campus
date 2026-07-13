@@ -105,12 +105,20 @@ export function usePermissions() {
   const hasVerifiedSession = computed(() => loaded.value && isAuthenticated.value)
   const hasOrganizationContext = computed(() => {
     if (!configLoaded.value) return false
+    if (currentOrganizationId.value !== null) return true
     if (isPublicPluginGroup.value) return false
     if (hasOrganizationGroup.value) return true
     if (hasExplicitGroup.value) return false
 
     return isRoot.value || organizations.value.length > 0
   })
+  const hasPlatformScope = computed(() =>
+    configLoaded.value
+    && hasVerifiedSession.value
+    && isRoot.value
+    && currentOrganizationId.value === null
+    && normalizeOrganizationKey(currentOrganizationName.value) === ''
+  )
   const belongsToCurrentOrganization = computed(() =>
     belongsToOrganization(organizations.value, currentOrganizationId.value, currentOrganizationName.value)
   )
@@ -119,21 +127,20 @@ export function usePermissions() {
     if (isRoot.value) return true
     return (isAdmin.value || isManager.value) && belongsToCurrentOrganization.value
   })
-  const canUseCampus = computed(() => hasVerifiedSession.value && hasOrganizationContext.value)
   const hasSchoolManagement = computed(() => isCampusAdmin.value)
   const hasTeachingManagement = computed(() => isCampusAdmin.value)
-  const hasCampusAccess = computed(() => isCampusAdmin.value)
+  const hasCampusAccess = computed(() => isCampusAdmin.value || hasPlatformScope.value)
 
   const permissions = computed<Permissions>(() => ({
-    'view-dashboard': hasCampusAccess.value,
+    'view-dashboard': isCampusAdmin.value,
     'view-schools': hasSchoolManagement.value,
     'view-classes': false,
-    'view-students': hasTeachingManagement.value,
-    'view-tools': hasCampusAccess.value,
+    'view-students': hasTeachingManagement.value || hasPlatformScope.value,
+    'view-tools': isCampusAdmin.value,
     'manage-school-boundaries': hasSchoolManagement.value,
     'manage-classes': false,
-    'manage-student-accounts': hasSchoolManagement.value,
-    'manage-global-tools': canUseCampus.value && isRoot.value,
+    'manage-student-accounts': hasSchoolManagement.value || hasPlatformScope.value,
+    'manage-global-tools': isCampusAdmin.value && isRoot.value,
   }))
 
   async function fetchPermissions(force = false) {
@@ -159,6 +166,7 @@ export function usePermissions() {
     isStudent,
     primaryRole,
     hasOrganizationContext,
+    hasPlatformScope,
     currentOrganizationId,
     currentOrganizationName,
     currentOrganizationTitle,

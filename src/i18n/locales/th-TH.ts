@@ -15,7 +15,7 @@ export default {
     dashboard: 'ภาพรวม',
     schools: 'องค์กร',
     classes: 'ชั้นเรียน',
-    students: 'นักเรียน',
+    students: 'บัญชี',
     tools: 'เครื่องมือสอน',
     apiDiagnostics: 'ตรวจ API',
   },

@@ -49,7 +49,7 @@
         <div v-if="!ready" class="loading-state">
           <el-icon class="is-loading" :size="24"><Loading /></el-icon>
         </div>
-        <div v-else-if="loaded && !hasOrganizationContext" class="locked-state">
+        <div v-else-if="loaded && !hasCampusAccess" class="locked-state">
           <el-result
             icon="warning"
             :title="$t('permission.organizationRequiredTitle')"
@@ -66,8 +66,9 @@
 </template>
 
 <script setup lang="ts">
-import { computed, markRaw, onMounted, ref } from 'vue'
+import { computed, markRaw, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { useRoute, useRouter } from 'vue-router'
 import {
   Close,
   Collection,
@@ -83,13 +84,16 @@ import { usePermissions, type CampusPermission } from '../composables/usePermiss
 
 const { user } = useAuthSession()
 const { t } = useI18n()
+const route = useRoute()
+const router = useRouter()
 const {
   fetchPermissions,
   can,
   hasAny,
   loaded,
   primaryRole,
-  hasOrganizationContext,
+  hasCampusAccess,
+  hasPlatformScope,
   isPublicPluginGroup,
 } = usePermissions()
 
@@ -129,6 +133,16 @@ const navItems: Array<{
   { to: '/tools', label: 'nav.tools', permission: 'view-tools', icon: markRaw(Grid) },
 ]
 
+function redirectPlatformScopeToAccounts() {
+  if (!hasPlatformScope.value) return
+  const requiredPermission = route.meta.requiresPermission as CampusPermission | undefined
+  if (requiredPermission && !can(requiredPermission)) {
+    void router.replace('/students')
+  }
+}
+
+watch(hasPlatformScope, redirectPlatformScopeToAccounts)
+
 onMounted(async () => {
   try {
     await fetchPermissions()
@@ -136,6 +150,7 @@ onMounted(async () => {
     // The outer App.vue handles token and iframe handshake states.
   } finally {
     ready.value = true
+    redirectPlatformScopeToAccounts()
   }
 })
 </script>

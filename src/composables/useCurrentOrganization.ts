@@ -9,7 +9,7 @@ const loading = ref(false)
 const loaded = ref(false)
 const error = ref('')
 let loadPromise: Promise<void> | null = null
-let loadedOrganizationKey = ''
+let loadedOrganizationContext = ''
 
 function normalizeOrganizationKey(value: unknown): string {
   return typeof value === 'string' ? value.trim() : ''
@@ -48,24 +48,40 @@ export function useCurrentOrganization() {
   } = usePermissions()
 
   const organizationName = computed(() => normalizeOrganizationKey(currentOrganizationName.value))
-  const organizationId = computed(() => organization.value?.id ?? null)
-  const organizationTitle = computed(() => organization.value?.title ?? organizationName.value)
+  const organizationId = computed(() => currentOrganizationId.value ?? organization.value?.id ?? null)
+  const organizationTitle = computed(() => {
+    const resolvedTitle = currentOrganizationId.value === null || organization.value?.id === currentOrganizationId.value
+      ? organization.value?.title
+      : ''
+    return resolvedTitle
+      || normalizeOrganizationKey(currentOrganizationTitle.value)
+      || organizationName.value
+      || (organizationId.value === null ? '' : `组织 #${organizationId.value}`)
+  })
 
   const hostOrganization = computed<OrganizationSummary | null>(() => {
     const id = currentOrganizationId.value
     const key = organizationName.value
-    if (id === null || key === '') return null
+    if (id === null) return null
 
     const title = normalizeOrganizationKey(currentOrganizationTitle.value)
     return {
       id,
-      name: key,
-      title: title || key,
+      name: key || `organization-${id}`,
+      title: title || key || `组织 #${id}`,
     }
   })
 
-  function resetOrganizationState(key: string) {
-    loadedOrganizationKey = key
+  const organizationContextSignature = computed(() =>
+    [
+      organizationName.value,
+      currentOrganizationId.value ?? '',
+      currentOrganizationTitle.value,
+    ].join(':')
+  )
+
+  function resetOrganizationState(context: string) {
+    loadedOrganizationContext = context
     organization.value = null
     loaded.value = false
     error.value = ''
@@ -74,8 +90,9 @@ export function useCurrentOrganization() {
 
   async function loadCurrentOrganization(force = false) {
     const key = organizationName.value
-    if (key !== loadedOrganizationKey) {
-      resetOrganizationState(key)
+    const context = organizationContextSignature.value
+    if (context !== loadedOrganizationContext) {
+      resetOrganizationState(context)
     }
 
     if (loaded.value && !force) return
@@ -89,16 +106,16 @@ export function useCurrentOrganization() {
       error.value = ''
 
       try {
+        if (hostOrganization.value) {
+          organization.value = hostOrganization.value
+          loaded.value = true
+          return
+        }
+
         if (key === '') {
           organization.value = null
           loaded.value = true
           error.value = '当前插件没有组织上下文'
-          return
-        }
-
-        if (hostOrganization.value && matchesOrganization(hostOrganization.value, key)) {
-          organization.value = hostOrganization.value
-          loaded.value = true
           return
         }
 
@@ -130,19 +147,10 @@ export function useCurrentOrganization() {
     await loadPromise
   }
 
-  const organizationContextSignature = computed(() =>
-    [
-      organizationName.value,
-      currentOrganizationId.value ?? '',
-      currentOrganizationTitle.value,
-    ].join(':')
-  )
-
   watch(organizationContextSignature, (signature, previousSignature) => {
     if (signature === previousSignature) return
-    const key = organizationName.value
-    resetOrganizationState(key)
-    if (key) {
+    resetOrganizationState(signature)
+    if (hostOrganization.value || organizationName.value) {
       void loadCurrentOrganization(true)
     }
   })

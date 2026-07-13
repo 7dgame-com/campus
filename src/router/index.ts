@@ -47,7 +47,7 @@ const router = createRouter({
           path: 'students',
           name: 'Students',
           component: () => import('../views/StudentsView.vue'),
-          meta: { title: '学生账号', requiresPermission: 'view-students' },
+          meta: { title: '账号管理', requiresPermission: 'view-students' },
         },
         {
           path: 'tools',
