@@ -1,5 +1,5 @@
 import { flushPromises, shallowMount } from '@vue/test-utils'
-import { nextTick, ref } from 'vue'
+import { nextTick, reactive, ref } from 'vue'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import StudentsView from '../views/StudentsView.vue'
 
@@ -15,8 +15,16 @@ const mocks = vi.hoisted(() => {
     loadCurrentOrganization: vi.fn(),
     listCampusManagedUsers: vi.fn(),
     listUsers: vi.fn(),
+    routeQuery: {} as Record<string, string>,
+    routerPush: vi.fn(),
+    routerReplace: vi.fn(),
   }
 })
+
+vi.mock('vue-router', () => ({
+  useRoute: () => ({ query: mocks.routeQuery }),
+  useRouter: () => ({ push: mocks.routerPush, replace: mocks.routerReplace }),
+}))
 
 vi.mock('../composables/useCurrentOrganization', () => ({
   useCurrentOrganization: () => ({
@@ -77,7 +85,12 @@ function mountView() {
         ElFormItem: true,
         ElIcon: true,
         ElInput: true,
-        ElPagination: true,
+        ElPagination: {
+          name: 'ElPagination',
+          props: ['currentPage', 'pageSize', 'total'],
+          emits: ['update:currentPage', 'update:pageSize', 'current-change', 'size-change'],
+          template: '<div class="pagination-stub" />',
+        },
         ElProgress: true,
         ElSkeleton: true,
         ElTable: {
@@ -105,6 +118,9 @@ describe('StudentsView automatic statistics scope', () => {
     mocks.loadCurrentOrganization.mockResolvedValue(undefined)
     mocks.listCampusManagedUsers.mockResolvedValue(emptyPage)
     mocks.listUsers.mockResolvedValue(emptyPage)
+    mocks.routeQuery = reactive({})
+    mocks.routerPush.mockResolvedValue(undefined)
+    mocks.routerReplace.mockResolvedValue(undefined)
   })
 
   afterEach(() => {
@@ -123,6 +139,59 @@ describe('StudentsView automatic statistics scope', () => {
     expect(mocks.listUsers).not.toHaveBeenCalled()
     expect(wrapper.text()).toContain('统计范围：示例学校')
     expect(wrapper.find('el-select-stub').exists()).toBe(false)
+
+    wrapper.unmount()
+  })
+
+  it('restores the current page from the plugin URL query', async () => {
+    mocks.routeQuery = { page: '3' }
+
+    const wrapper = mountView()
+    await flushPromises()
+
+    expect(mocks.listCampusManagedUsers).toHaveBeenCalledWith({
+      page: 3,
+      pageSize: 20,
+      organization_id: 7,
+    })
+
+    wrapper.unmount()
+  })
+
+  it('writes a selected page to the plugin URL before loading it', async () => {
+    const wrapper = mountView()
+    await flushPromises()
+    mocks.listCampusManagedUsers.mockClear()
+
+    wrapper.findComponent({ name: 'ElPagination' }).vm.$emit('current-change', 2)
+    await flushPromises()
+
+    expect(mocks.routerPush).toHaveBeenCalledWith({
+      query: { page: '2' },
+    })
+    expect(mocks.listCampusManagedUsers).toHaveBeenCalledWith({
+      page: 2,
+      pageSize: 20,
+      organization_id: 7,
+    })
+
+    wrapper.unmount()
+  })
+
+  it('reloads the list when browser history changes the page query', async () => {
+    const wrapper = mountView()
+    await flushPromises()
+    mocks.listCampusManagedUsers.mockClear()
+
+    mocks.routeQuery.page = '4'
+    await nextTick()
+    await flushPromises()
+
+    expect(mocks.listCampusManagedUsers).toHaveBeenCalledWith({
+      page: 4,
+      pageSize: 20,
+      organization_id: 7,
+    })
 
     wrapper.unmount()
   })

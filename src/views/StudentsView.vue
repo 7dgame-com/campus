@@ -79,8 +79,8 @@
           :total="total"
           :page-sizes="[10, 20, 50]"
           layout="total, sizes, prev, pager, next"
-          @current-change="loadUsers"
-          @size-change="loadUsers"
+          @current-change="handlePageChange"
+          @size-change="handlePageSizeChange"
         />
       </div>
     </section>
@@ -275,6 +275,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox, type UploadFile, type UploadFiles, type UploadUserFile } from 'element-plus'
 import { Brush, Clock, DocumentAdd, Key, Refresh, Upload } from '@element-plus/icons-vue'
 import {
@@ -307,6 +308,8 @@ const BATCH_PROTECTED_ROLES = ['root', 'admin', 'manager'] as const
 const RESOURCE_UPLOAD_MAX_BYTES = 200 * 1024 * 1024
 const ALL_MANAGED_USERS_PAGE_SIZE = 100
 const PASSWORD_POLICY_HINT = '密码要求：8-64 位，需包含大写字母、小写字母、数字、特殊字符中的至少 3 类，且不能包含用户名或邮箱信息。'
+const route = useRoute()
+const router = useRouter()
 const { can, hasPlatformScope } = usePermissions()
 const {
   organizationName,
@@ -316,11 +319,17 @@ const {
   loadCurrentOrganization,
 } = useCurrentOrganization()
 
+function normalizePage(value: unknown): number {
+  const rawValue = Array.isArray(value) ? value[0] : value
+  const parsed = typeof rawValue === 'number' ? rawValue : Number(rawValue)
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : 1
+}
+
 const users = ref<CampusManagedUser[]>([])
 const selectedUsers = ref<CampusManagedUser[]>([])
 const loading = ref(false)
 const search = ref('')
-const page = ref(1)
+const page = ref(normalizePage(route.query.page))
 const pageSize = ref(20)
 const total = ref(0)
 const loginAuditDialogRef = ref<InstanceType<typeof LoginAuditDialog> | null>(null)
@@ -532,9 +541,44 @@ function resultDetail(result: CampusOperationResult) {
   return result.error || result.message
 }
 
-function refreshFromFirstPage() {
+async function syncPageQuery(nextPage: number, navigation: 'push' | 'replace' = 'replace') {
+  const normalizedPage = normalizePage(nextPage)
+  const currentPageQuery = Array.isArray(route.query.page)
+    ? route.query.page[0]
+    : route.query.page
+  const nextPageQuery = normalizedPage > 1 ? String(normalizedPage) : undefined
+
+  if (currentPageQuery === nextPageQuery || (!currentPageQuery && !nextPageQuery)) {
+    return
+  }
+
+  const query = { ...route.query }
+  if (nextPageQuery) {
+    query.page = nextPageQuery
+  } else {
+    delete query.page
+  }
+
+  await router[navigation]({ query })
+}
+
+async function handlePageChange(nextPage: number) {
+  page.value = normalizePage(nextPage)
+  await syncPageQuery(page.value, 'push')
+  await loadUsers()
+}
+
+async function handlePageSizeChange(nextPageSize: number) {
+  pageSize.value = nextPageSize
   page.value = 1
-  void loadUsers()
+  await syncPageQuery(page.value)
+  await loadUsers()
+}
+
+async function refreshFromFirstPage() {
+  page.value = 1
+  await syncPageQuery(page.value)
+  await loadUsers()
 }
 
 function clearUserList() {
@@ -1150,7 +1194,15 @@ function requestErrorMessage(error: unknown): string {
 watch(scopeSignature, (signature, previousSignature) => {
   if (!mounted || signature === previousSignature) return
   invalidateUserList()
-  refreshFromFirstPage()
+  void refreshFromFirstPage()
+})
+
+watch(() => route.query.page, (routePage) => {
+  const nextPage = normalizePage(routePage)
+  if (nextPage === page.value) return
+
+  page.value = nextPage
+  if (mounted) void loadUsers()
 })
 
 onMounted(async () => {
