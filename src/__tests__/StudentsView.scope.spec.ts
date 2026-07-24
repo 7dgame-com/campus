@@ -84,7 +84,12 @@ function mountView() {
         ElForm: true,
         ElFormItem: true,
         ElIcon: true,
-        ElInput: true,
+        ElInput: {
+          name: 'ElInput',
+          props: ['modelValue'],
+          emits: ['update:modelValue', 'clear', 'keyup'],
+          template: '<input />',
+        },
         ElPagination: {
           name: 'ElPagination',
           props: ['currentPage', 'pageSize', 'total'],
@@ -143,17 +148,19 @@ describe('StudentsView automatic statistics scope', () => {
     wrapper.unmount()
   })
 
-  it('restores the current page from the plugin URL query', async () => {
-    mocks.routeQuery = { page: '3' }
+  it('restores pagination and search state from the plugin URL query', async () => {
+    mocks.routeQuery = { page: '3', pageSize: '50', search: 'Alice' }
 
     const wrapper = mountView()
     await flushPromises()
 
     expect(mocks.listCampusManagedUsers).toHaveBeenCalledWith({
       page: 3,
-      pageSize: 20,
+      pageSize: 50,
       organization_id: 7,
+      search: 'Alice',
     })
+    expect(wrapper.findComponent({ name: 'ElInput' }).props('modelValue')).toBe('Alice')
 
     wrapper.unmount()
   })
@@ -178,19 +185,69 @@ describe('StudentsView automatic statistics scope', () => {
     wrapper.unmount()
   })
 
-  it('reloads the list when browser history changes the page query', async () => {
+  it('writes the selected page size to the plugin URL and returns to page one', async () => {
+    mocks.routeQuery = reactive({ page: '3' })
     const wrapper = mountView()
     await flushPromises()
     mocks.listCampusManagedUsers.mockClear()
 
-    mocks.routeQuery.page = '4'
+    wrapper.findComponent({ name: 'ElPagination' }).vm.$emit('size-change', 50)
+    await flushPromises()
+
+    expect(mocks.routerPush).toHaveBeenCalledWith({
+      query: { pageSize: '50' },
+    })
+    expect(mocks.listCampusManagedUsers).toHaveBeenCalledWith({
+      page: 1,
+      pageSize: 50,
+      organization_id: 7,
+    })
+
+    wrapper.unmount()
+  })
+
+  it('writes an applied search to the plugin URL and request', async () => {
+    const wrapper = mountView()
+    await flushPromises()
+    mocks.listCampusManagedUsers.mockClear()
+
+    const searchInput = wrapper.findComponent({ name: 'ElInput' })
+    searchInput.vm.$emit('update:modelValue', ' Alice ')
+    await nextTick()
+    searchInput.vm.$emit('keyup', new KeyboardEvent('keyup', { key: 'Enter' }))
+    await flushPromises()
+
+    expect(mocks.routerPush).toHaveBeenCalledWith({
+      query: { search: 'Alice' },
+    })
+    expect(mocks.listCampusManagedUsers).toHaveBeenCalledWith({
+      page: 1,
+      pageSize: 20,
+      organization_id: 7,
+      search: 'Alice',
+    })
+
+    wrapper.unmount()
+  })
+
+  it('reloads the list when browser history changes any list query', async () => {
+    const wrapper = mountView()
+    await flushPromises()
+    mocks.listCampusManagedUsers.mockClear()
+
+    Object.assign(mocks.routeQuery, {
+      page: '4',
+      pageSize: '50',
+      search: 'Bob',
+    })
     await nextTick()
     await flushPromises()
 
     expect(mocks.listCampusManagedUsers).toHaveBeenCalledWith({
       page: 4,
-      pageSize: 20,
+      pageSize: 50,
       organization_id: 7,
+      search: 'Bob',
     })
 
     wrapper.unmount()
