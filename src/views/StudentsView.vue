@@ -307,6 +307,8 @@ const ROLE_PRIORITY: Record<string, number> = { root: 4, admin: 3, manager: 2, u
 const BATCH_PROTECTED_ROLES = ['root', 'admin', 'manager'] as const
 const RESOURCE_UPLOAD_MAX_BYTES = 200 * 1024 * 1024
 const ALL_MANAGED_USERS_PAGE_SIZE = 100
+const DEFAULT_PAGE_SIZE = 20
+const ALLOWED_PAGE_SIZES = new Set([10, 20, 50])
 const PASSWORD_POLICY_HINT = '密码要求：8-64 位，需包含大写字母、小写字母、数字、特殊字符中的至少 3 类，且不能包含用户名或邮箱信息。'
 const route = useRoute()
 const router = useRouter()
@@ -325,12 +327,27 @@ function normalizePage(value: unknown): number {
   return Number.isInteger(parsed) && parsed > 0 ? parsed : 1
 }
 
+function normalizePageSize(value: unknown): number {
+  const normalized = normalizePage(value)
+  return ALLOWED_PAGE_SIZES.has(normalized) ? normalized : DEFAULT_PAGE_SIZE
+}
+
+function normalizeSearch(value: unknown): string {
+  const rawValue = Array.isArray(value) ? value[0] : value
+  return typeof rawValue === 'string' ? rawValue.trim() : ''
+}
+
+function queryString(value: unknown): string | undefined {
+  const rawValue = Array.isArray(value) ? value[0] : value
+  return typeof rawValue === 'string' && rawValue ? rawValue : undefined
+}
+
 const users = ref<CampusManagedUser[]>([])
 const selectedUsers = ref<CampusManagedUser[]>([])
 const loading = ref(false)
-const search = ref('')
+const search = ref(normalizeSearch(route.query.search))
 const page = ref(normalizePage(route.query.page))
-const pageSize = ref(20)
+const pageSize = ref(normalizePageSize(route.query.pageSize))
 const total = ref(0)
 const loginAuditDialogRef = ref<InstanceType<typeof LoginAuditDialog> | null>(null)
 
@@ -541,22 +558,30 @@ function resultDetail(result: CampusOperationResult) {
   return result.error || result.message
 }
 
-async function syncPageQuery(nextPage: number, navigation: 'push' | 'replace' = 'replace') {
-  const normalizedPage = normalizePage(nextPage)
-  const currentPageQuery = Array.isArray(route.query.page)
-    ? route.query.page[0]
-    : route.query.page
-  const nextPageQuery = normalizedPage > 1 ? String(normalizedPage) : undefined
+async function syncListQuery(navigation: 'push' | 'replace' = 'replace') {
+  const nextPageQuery = page.value > 1 ? String(page.value) : undefined
+  const nextPageSizeQuery = pageSize.value !== DEFAULT_PAGE_SIZE ? String(pageSize.value) : undefined
+  const nextSearchQuery = search.value || undefined
 
-  if (currentPageQuery === nextPageQuery || (!currentPageQuery && !nextPageQuery)) {
+  if (
+    queryString(route.query.page) === nextPageQuery
+    && queryString(route.query.pageSize) === nextPageSizeQuery
+    && queryString(route.query.search) === nextSearchQuery
+  ) {
     return
   }
 
   const query = { ...route.query }
-  if (nextPageQuery) {
-    query.page = nextPageQuery
-  } else {
-    delete query.page
+  for (const [key, value] of [
+    ['page', nextPageQuery],
+    ['pageSize', nextPageSizeQuery],
+    ['search', nextSearchQuery],
+  ] as const) {
+    if (value) {
+      query[key] = value
+    } else {
+      delete query[key]
+    }
   }
 
   await router[navigation]({ query })
@@ -564,20 +589,27 @@ async function syncPageQuery(nextPage: number, navigation: 'push' | 'replace' = 
 
 async function handlePageChange(nextPage: number) {
   page.value = normalizePage(nextPage)
-  await syncPageQuery(page.value, 'push')
+  await syncListQuery('push')
   await loadUsers()
 }
 
 async function handlePageSizeChange(nextPageSize: number) {
-  pageSize.value = nextPageSize
+  pageSize.value = normalizePageSize(nextPageSize)
   page.value = 1
-  await syncPageQuery(page.value)
+  await syncListQuery('push')
   await loadUsers()
 }
 
 async function refreshFromFirstPage() {
+  search.value = normalizeSearch(search.value)
   page.value = 1
-  await syncPageQuery(page.value)
+  await syncListQuery('push')
+  await loadUsers()
+}
+
+async function refreshScopeFromFirstPage() {
+  page.value = 1
+  await syncListQuery()
   await loadUsers()
 }
 
@@ -1194,16 +1226,29 @@ function requestErrorMessage(error: unknown): string {
 watch(scopeSignature, (signature, previousSignature) => {
   if (!mounted || signature === previousSignature) return
   invalidateUserList()
-  void refreshFromFirstPage()
+  void refreshScopeFromFirstPage()
 })
 
-watch(() => route.query.page, (routePage) => {
-  const nextPage = normalizePage(routePage)
-  if (nextPage === page.value) return
+watch(
+  () => [route.query.page, route.query.pageSize, route.query.search] as const,
+  ([routePage, routePageSize, routeSearch]) => {
+    const nextPage = normalizePage(routePage)
+    const nextPageSize = normalizePageSize(routePageSize)
+    const nextSearch = normalizeSearch(routeSearch)
+    if (
+      nextPage === page.value
+      && nextPageSize === pageSize.value
+      && nextSearch === search.value
+    ) {
+      return
+    }
 
-  page.value = nextPage
-  if (mounted) void loadUsers()
-})
+    page.value = nextPage
+    pageSize.value = nextPageSize
+    search.value = nextSearch
+    if (mounted) void loadUsers()
+  },
+)
 
 onMounted(async () => {
   await loadCurrentOrganization()
