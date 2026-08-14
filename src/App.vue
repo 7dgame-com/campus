@@ -4,6 +4,10 @@
   <template v-else>
     <router-view v-if="canRenderProtectedRoute" />
 
+    <div v-else-if="accessDenied" class="access-denied" role="alert">
+      您没有权限访问此页面
+    </div>
+
     <!-- 握手状态 -->
     <Transition name="handshake-fade">
       <!-- 非 iframe：警告模态窗 -->
@@ -17,7 +21,6 @@
             <div class="step done">✅ {{ $t('handshake.pluginReady') }}</div>
             <div class="step warn">⚠️ {{ $t('handshake.waitingInit') }}</div>
           </div>
-          <a href="/api-diagnostics" class="diag-link">{{ $t('handshake.goToDiagnostics') }}</a>
         </div>
       </div>
       <!-- iframe 内：简单 loading -->
@@ -39,6 +42,7 @@ import { isInIframe, getToken, setToken, removeToken } from './utils/token'
 import { usePluginMessageBridge } from './composables/usePluginMessageBridge'
 import { clearHostPluginConfig, setHostPluginConfig, useHostPluginContext } from './composables/useHostPluginContext'
 import { setThemeFromConfig } from './composables/useTheme'
+import { usePermissions } from './composables/usePermissions'
 
 declare const __APP_VERSION__: string
 const appVersion = `v${__APP_VERSION__}`
@@ -47,11 +51,28 @@ const route = useRoute()
 const hasToken = ref(!!getToken())
 const inIframe = ref(isInIframe())
 const { configLoaded } = useHostPluginContext()
+const { loaded, can, fetchPermissions } = usePermissions()
 
 // 公开路由不需要 token 认证
-const PUBLIC_ROUTES = ['/api-diagnostics']
-const isPublicRoute = computed(() => PUBLIC_ROUTES.some((p) => route.path.startsWith(p)))
-const canRenderProtectedRoute = computed(() => hasToken.value && configLoaded.value)
+const isPublicRoute = computed(() => route.meta.public === true)
+const requiredPermission = computed(() => route.meta.requiresPermission)
+const refreshPermissions = (force = false) => {
+  void fetchPermissions(force).catch(() => undefined)
+}
+const canRenderProtectedRoute = computed(() =>
+  hasToken.value
+  && configLoaded.value
+  && loaded.value
+  && (!requiredPermission.value || can(requiredPermission.value))
+)
+const accessDenied = computed(() =>
+  !isPublicRoute.value
+  && hasToken.value
+  && configLoaded.value
+  && loaded.value
+  && !!requiredPermission.value
+  && !can(requiredPermission.value)
+)
 
 // 显示握手状态：非公开页面必须在 iframe 内拿到当前 INIT token 和配置。
 const showHandshake = computed(() =>
@@ -66,11 +87,13 @@ usePluginMessageBridge({
     }
     setHostPluginConfig(payload.config)
     setThemeFromConfig(payload.config)
+    if (payload.token) refreshPermissions(true)
   },
   onTokenUpdate: (newToken) => {
     if (newToken) {
       setToken(newToken)
       hasToken.value = true
+      refreshPermissions(true)
     }
   },
   onDestroy: () => {
@@ -89,6 +112,7 @@ onMounted(() => {
     hasToken.value = false
   } else {
     hasToken.value = !!getToken()
+    if (hasToken.value) refreshPermissions()
   }
 })
 </script>
@@ -179,6 +203,13 @@ onMounted(() => {
   align-items: center;
   justify-content: center;
   background: var(--bg-page, #f5f7fa);
+}
+.access-denied {
+  min-height: 240px;
+  display: grid;
+  place-items: center;
+  color: #c45656;
+  font-size: 16px;
 }
 .handshake-spinner { font-size: 36px; display: inline-block; }
 .handshake-spinner.spin { animation: spin 2s linear infinite; }
