@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import router from '../router'
+import router, { shouldRegisterDiagnostics } from '../router'
 
 afterEach(async () => {
   vi.restoreAllMocks()
@@ -8,6 +8,10 @@ afterEach(async () => {
 })
 
 describe('plugin URL sync', () => {
+  it('does not register diagnostics in Production', () => {
+    expect(shouldRegisterDiagnostics(true)).toBe(false)
+  })
+
   it('sends plugin-url-changed events after route changes', async () => {
     const postMessage = vi
       .spyOn(window.parent, 'postMessage')
