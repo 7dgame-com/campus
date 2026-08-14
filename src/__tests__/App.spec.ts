@@ -7,6 +7,7 @@ import { clearHostPluginConfig } from '../composables/useHostPluginContext'
 const { routeState, tokenState } = vi.hoisted(() => ({
   routeState: {
     path: '/students',
+    meta: { requiresPermission: 'view-students' },
   },
   tokenState: {
     inIframe: true,
@@ -31,6 +32,14 @@ vi.mock('../utils/token', () => ({
 
 vi.mock('../composables/useTheme', () => ({
   setThemeFromConfig: vi.fn(),
+}))
+
+vi.mock('../composables/usePermissions', () => ({
+  usePermissions: () => ({
+    loaded: { value: true },
+    can: () => true,
+    fetchPermissions: vi.fn().mockResolvedValue(undefined),
+  }),
 }))
 
 function mountApp(): VueWrapper {
