@@ -54,6 +54,12 @@ export const appRoutes: RouteRecordRaw[] = [
           meta: { title: '账号管理', requiresPermission: 'view-students' },
         },
         {
+          path: 'login-records',
+          name: 'LoginRecords',
+          component: () => import('../views/LoginRecordsView.vue'),
+          meta: { title: '登录流水', requiresPermission: 'view-login-records' },
+        },
+        {
           path: 'tools',
           name: 'Tools',
           component: () => import('../views/ToolsView.vue'),

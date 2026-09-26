@@ -244,6 +244,36 @@ export interface LoginAuditResponse {
   }
 }
 
+export type LoginRecordRole = 'root' | 'admin' | 'manager' | 'user' | 'other'
+
+export interface OrganizationLoginRecord {
+  eventKey: string
+  userId: number
+  username: string | null
+  nickname: string | null
+  primaryRole: LoginRecordRole
+  occurredAt: string
+  source: string
+}
+
+export interface OrganizationLoginQuery {
+  organization_id: number
+  start_at: string
+  end_at: string
+  search?: string
+  role?: LoginRecordRole
+  page: number
+  pageSize: number
+}
+
+export function listOrganizationLoginEvents(params: OrganizationLoginQuery) {
+  return identityPluginUserApi.get<{
+    code: number
+    data: OrganizationLoginRecord[]
+    pagination: { page: number; pageSize: number; total: number; totalPages: number }
+  }>('/login-events', { params })
+}
+
 export interface CampusOperationResult {
   user_id: number
   username: string

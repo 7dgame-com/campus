@@ -19,6 +19,22 @@ describe('api token bootstrap', () => {
     vi.restoreAllMocks()
   })
 
+  it('sends organization login filters through the identity proxy with authentication', async () => {
+    const { setToken } = await import('../utils/token')
+    setToken('campus-test-token')
+    const { identityPluginUserApi, listOrganizationLoginEvents } = await import('../api/index')
+    const params = { organization_id: 7, start_at: '2026-09-25T16:00:00Z', end_at: '2026-09-26T16:00:00Z', page: 2, pageSize: 20, search: '张同学', role: 'user' as const }
+    const originalAdapter = identityPluginUserApi.defaults.adapter
+    identityPluginUserApi.defaults.adapter = async (config) => {
+      expect(config.baseURL).toBe('/api-auth/v1/plugin-user')
+      expect(config.url).toBe('/login-events')
+      expect(config.params).toEqual(params)
+      expect(config.headers.Authorization).toBe('Bearer campus-test-token')
+      return { status: 200, statusText: 'OK', headers: {}, config, data: { code: 0, data: [], pagination: { total: 0 } } }
+    }
+    try { await listOrganizationLoginEvents(params) } finally { identityPluginUserApi.defaults.adapter = originalAdapter }
+  })
+
   it('waits for the parent token before sending the first embedded request', async () => {
     const tokenModule = await import('../utils/token')
     vi.mocked(tokenModule.isInIframe).mockReturnValue(true)

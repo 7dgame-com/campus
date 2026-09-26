@@ -7,6 +7,7 @@ export type CampusPermission =
   | 'view-schools'
   | 'view-classes'
   | 'view-students'
+  | 'view-login-records'
   | 'view-tools'
   | 'manage-school-boundaries'
   | 'manage-classes'
@@ -136,6 +137,7 @@ export function usePermissions() {
     'view-schools': hasSchoolManagement.value,
     'view-classes': false,
     'view-students': hasTeachingManagement.value || hasPlatformScope.value,
+    'view-login-records': isCampusAdmin.value && !hasPlatformScope.value,
     'view-tools': isCampusAdmin.value,
     'manage-school-boundaries': hasSchoolManagement.value,
     'manage-classes': false,

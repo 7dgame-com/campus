@@ -16,6 +16,7 @@ export default {
     schools: '組織',
     classes: 'クラス',
     students: 'アカウント',
+    loginRecords: 'ログイン履歴',
     tools: '教材ツール',
     apiDiagnostics: 'API診断',
   },
