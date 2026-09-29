@@ -634,7 +634,10 @@ async function loadUsers() {
     return
   }
 
-  clearUserList()
+  // Keep the known total while loading; zeroing it makes ElPagination reset to page 1.
+  // Rows and selections still clear immediately so actions cannot target the previous page.
+  users.value = []
+  selectedUsers.value = []
   loading.value = true
   try {
     const params: Record<string, unknown> = {
