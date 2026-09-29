@@ -16,6 +16,7 @@ export default {
     schools: 'Organization',
     classes: 'Classes',
     students: 'Accounts',
+    loginRecords: 'Login activity',
     tools: 'Teaching Tools',
     apiDiagnostics: 'API Diagnostics',
   },

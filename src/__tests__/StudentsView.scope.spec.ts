@@ -1,7 +1,9 @@
-import { flushPromises, shallowMount } from '@vue/test-utils'
+import { flushPromises, mount, shallowMount } from '@vue/test-utils'
 import { nextTick, reactive, ref } from 'vue'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import StudentsView from '../views/StudentsView.vue'
+
+const { ElPagination } = await vi.importActual<typeof import('element-plus')>('element-plus')
 
 const mocks = vi.hoisted(() => {
   const refLike = <T>(value: T) => ({ value, __v_isRef: true as const })
@@ -71,9 +73,10 @@ const emptyPage = {
   },
 }
 
-function mountView() {
-  return shallowMount(StudentsView, {
+function mountView(realPagination = false) {
+  return (realPagination ? mount : shallowMount)(StudentsView, {
     global: {
+      components: { ElPagination },
       directives: {
         loading: () => undefined,
       },
@@ -90,7 +93,7 @@ function mountView() {
           emits: ['update:modelValue', 'clear', 'keyup'],
           template: '<input />',
         },
-        ElPagination: {
+        ElPagination: realPagination ? false : {
           name: 'ElPagination',
           props: ['currentPage', 'pageSize', 'total'],
           emits: ['update:currentPage', 'update:pageSize', 'current-change', 'size-change'],
@@ -183,6 +186,50 @@ describe('StudentsView automatic statistics scope', () => {
     })
 
     wrapper.unmount()
+  })
+
+  it('keeps the selected page while loading with the real pagination component', async () => {
+    mocks.routeQuery = reactive({ pageSize: '10' })
+    mocks.routerPush.mockImplementation(async ({ query }) => {
+      for (const key of Object.keys(mocks.routeQuery)) delete mocks.routeQuery[key]
+      Object.assign(mocks.routeQuery, query)
+    })
+    const response = (page: number) => ({
+      data: {
+        data: [{ id: page, username: `page-${page}`, roles: ['user'] }],
+        pagination: { total: 41, page, pageSize: 10 },
+      },
+    })
+    mocks.listCampusManagedUsers.mockResolvedValue(response(1))
+    const wrapper = mountView(true)
+    try {
+      await flushPromises()
+      for (const page of [2, 3, 4, 5, 1]) {
+        mocks.listCampusManagedUsers.mockClear()
+        let resolveRequest!: (value: unknown) => void
+        mocks.listCampusManagedUsers.mockImplementation(() => new Promise((resolve) => {
+          resolveRequest = resolve
+        }))
+
+        await wrapper.get(`[aria-label="page ${page}"]`).trigger('click')
+        await flushPromises()
+
+        expect(wrapper.findComponent(ElPagination).props('currentPage')).toBe(page)
+        expect(wrapper.findComponent(ElPagination).props('total')).toBe(41)
+        expect(mocks.routeQuery.page).toBe(page === 1 ? undefined : String(page))
+        expect(mocks.listCampusManagedUsers).toHaveBeenCalledTimes(1)
+        expect(mocks.listCampusManagedUsers).toHaveBeenLastCalledWith({
+          page, pageSize: 10, organization_id: 7,
+        })
+
+        resolveRequest(response(page))
+        await flushPromises()
+        expect(wrapper.find('.table-data').text()).toContain(`page-${page}`)
+        expect(wrapper.findComponent(ElPagination).props('currentPage')).toBe(page)
+      }
+    } finally {
+      wrapper.unmount()
+    }
   })
 
   it('writes the selected page size to the plugin URL and returns to page one', async () => {

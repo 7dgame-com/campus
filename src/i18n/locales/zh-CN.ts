@@ -16,6 +16,7 @@ export default {
     schools: '组织',
     classes: '班级',
     students: '账号',
+    loginRecords: '登录流水',
     tools: '教学工具',
     apiDiagnostics: 'API 诊断',
   },

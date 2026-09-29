@@ -33,6 +33,15 @@ corepack pnpm run dev
 - 需要完整用户管理能力时，通过宿主导航进入 `user-management`。
 - 需要插件注册管理时，通过宿主导航进入 `system-admin`。
 
+## 组织登录流水
+
+从具体组织进入校园管理，在“账号”之后打开“登录流水”（`/login-records`）。老师、组织管理员和 root 可查看；公共插件入口不提供全平台流水。
+
+- 展示当前组织所有账号的历史成功登录，支持北京时间日期范围、用户名/姓名及当前最高身份筛选，默认最近 7 天、每页 20 条。
+- 账号移出组织后，其记录不再出现在该组织；加入组织后，可查看该账号已采集的历史记录。该记录表示登录平台，不代表进入组织页面或在线时长。
+- 使用 identity-service 的 `GET /v1/plugin-user/login-events`，经 `/api-auth` 代理访问。需启用 `IDENTITY_PLUGIN_USER_READONLY_ENABLED` 和 `IDENTITY_LOGIN_AUDIT_ENABLED`，并配置 Legacy、Identity 数据库及一致的组织 shadow 成员关系。
+- 后台必须先支持新接口再更新插件；功能关闭、组织校验失败或接口不可用会展示错误，不会回退到全平台或显示为零条记录。
+
 ## 验证
 
 ```bash
