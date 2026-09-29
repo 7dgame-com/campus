@@ -16,6 +16,7 @@ export default {
     schools: 'องค์กร',
     classes: 'ชั้นเรียน',
     students: 'บัญชี',
+    loginRecords: 'ประวัติการเข้าสู่ระบบ',
     tools: 'เครื่องมือสอน',
     apiDiagnostics: 'ตรวจ API',
   },

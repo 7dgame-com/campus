@@ -16,6 +16,7 @@ export default {
     schools: '組織',
     classes: '班級',
     students: '帳號',
+    loginRecords: '登入紀錄',
     tools: '教學工具',
     apiDiagnostics: 'API 診斷',
   },

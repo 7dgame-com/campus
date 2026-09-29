@@ -73,6 +73,7 @@ import {
   Close,
   Collection,
   DataBoard,
+  Clock,
   Fold,
   Grid,
   Loading,
@@ -130,6 +131,7 @@ const navItems: Array<{
   { to: '/schools', label: 'nav.schools', permission: 'view-schools', icon: markRaw(OfficeBuilding) },
   { to: '/classes', label: 'nav.classes', permission: 'view-classes', icon: markRaw(Collection) },
   { to: '/students', label: 'nav.students', permission: 'view-students', icon: markRaw(User) },
+  { to: '/login-records', label: 'nav.loginRecords', permission: 'view-login-records', icon: markRaw(Clock) },
   { to: '/tools', label: 'nav.tools', permission: 'view-tools', icon: markRaw(Grid) },
 ]
 

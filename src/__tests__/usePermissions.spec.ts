@@ -52,6 +52,26 @@ describe('usePermissions', () => {
     hostContextState.currentOrganizationName.value = 'school-first-lab'
   })
 
+  it.each(['root', 'admin', 'manager', 'user'])('checks login records access for %s in an organization', async (role) => {
+    sessionState.loaded.value = true
+    sessionState.isAuthenticated.value = true
+    sessionState.user.value = { roles: [role], organizations: [{ id: 7, title: '学校', name: 'school-first-lab' }] }
+    hostContextState.currentOrganizationId.value = 7
+    const { usePermissions } = await loadComposable()
+    expect(usePermissions().can('view-login-records')).toBe(role !== 'user')
+  })
+
+  it('does not expose organization login records in root platform scope', async () => {
+    sessionState.loaded.value = true
+    sessionState.isAuthenticated.value = true
+    sessionState.user.value = { roles: ['root'] }
+    hostContextState.currentOrganizationName.value = ''
+    hostContextState.hasOrganizationGroup.value = false
+    hostContextState.isPublicPluginGroup.value = true
+    const { usePermissions } = await loadComposable()
+    expect(usePermissions().can('view-login-records')).toBe(false)
+  })
+
   it('allows school management for admin sessions in the same organization', async () => {
     sessionState.loaded.value = true
     sessionState.user.value = {
